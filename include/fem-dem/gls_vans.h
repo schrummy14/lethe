@@ -20,21 +20,6 @@
 #ifndef lethe_gls_vans_h
 #define lethe_gls_vans_h
 
-#include "core/bdf.h"
-#include "core/grids.h"
-#include "core/manifolds.h"
-#include "core/time_integration_utilities.h"
-#include <core/grids.h>
-#include <core/parameters.h>
-
-#include "solvers/gls_navier_stokes.h"
-#include "solvers/postprocessing_cfd.h"
-
-#include <dem/dem.h>
-#include <dem/dem_properties.h>
-#include <fem-dem/cfd_dem_simulation_parameters.h>
-#include <fem-dem/vans_assemblers.h>
-
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/fe/mapping_q.h>
@@ -44,6 +29,20 @@
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+
+#include <core/grids.h>
+#include <core/parameters.h>
+#include <dem/dem.h>
+#include <dem/dem_properties.h>
+#include <fem-dem/cfd_dem_simulation_parameters.h>
+#include <fem-dem/vans_assemblers.h>
+
+#include "core/bdf.h"
+#include "core/grids.h"
+#include "core/manifolds.h"
+#include "core/time_integration_utilities.h"
+#include "solvers/gls_navier_stokes.h"
+#include "solvers/postprocessing_cfd.h"
 
 
 
@@ -78,10 +77,19 @@ private:
   update_solution_and_constraints();
 
   void
-  assemble_L2_projection_void_fraction();
+  initialize_void_fraction();
+
+  void
+  particle_centered_method();
+
+  void
+  quadrature_centered_sphere_method();
 
   void
   solve_L2_system_void_fraction();
+
+  void
+  vertices_cell_mapping();
 
   /**
    * @brief finish_time_step
@@ -242,6 +250,10 @@ protected:
   const bool   SUPG        = true;
   const double GLS_u_scale = 1;
   double       pressure_drop;
+
+  std::map<unsigned int,
+           std::set<typename DoFHandler<dim>::active_cell_iterator>>
+    vertices_to_cell;
 
 protected:
   Particles::ParticleHandler<dim, dim> particle_handler;

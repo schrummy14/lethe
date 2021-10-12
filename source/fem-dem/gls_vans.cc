@@ -1,12 +1,13 @@
-#include "solvers/postprocessing_cfd.h"
-
-#include <fem-dem/gls_vans.h>
-
 #include <deal.II/base/work_stream.h>
 
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/numerics/vector_tools.h>
+
+#include <core/lethegridtools.h>
+#include <fem-dem/gls_vans.h>
+
+#include "solvers/postprocessing_cfd.h"
 
 
 // Constructor for class GLS_VANS
@@ -220,7 +221,8 @@ GLSVANSSolver<dim>::calculate_void_fraction(const double time)
   else if (this->cfd_dem_simulation_parameters.void_fraction->mode ==
            Parameters::VoidFractionMode::dem)
     {
-      assemble_L2_projection_void_fraction();
+      // particle_centered_method();
+      quadrature_centered_sphere_method();
       solve_L2_system_void_fraction();
       if (this->cfd_dem_simulation_parameters.void_fraction
             ->bound_void_fraction == true)
@@ -340,7 +342,17 @@ GLSVANSSolver<dim>::update_solution_and_constraints()
 
 template <int dim>
 void
-GLSVANSSolver<dim>::assemble_L2_projection_void_fraction()
+GLSVANSSolver<dim>::vertices_cell_mapping()
+{
+  // Find all the cells around each vertices
+  TimerOutput::Scope t(this->computing_timer, "vertices_to_cell_map");
+
+  LetheGridTools::vertices_cell_mapping(this->dof_handler, vertices_to_cell);
+}
+
+template <int dim>
+void
+GLSVANSSolver<dim>::particle_centered_method()
 {
   QGauss<dim>         quadrature_formula(this->number_quadrature_points);
   const MappingQ<dim> mapping(1,
@@ -402,6 +414,7 @@ GLSVANSSolver<dim>::assemble_L2_projection_void_fraction()
                 }
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
+                  // Assemble L2 projection
                   // Matrix assembly
                   for (unsigned int j = 0; j < dofs_per_cell; ++j)
                     {
@@ -429,6 +442,211 @@ GLSVANSSolver<dim>::assemble_L2_projection_void_fraction()
   system_matrix_void_fraction.compress(VectorOperation::add);
   system_rhs_void_fraction.compress(VectorOperation::add);
 }
+
+template <int dim>
+void
+GLSVANSSolver<dim>::quadrature_centered_sphere_method()
+{
+  QGauss<dim>         quadrature_formula(this->number_quadrature_points);
+  const MappingQ<dim> mapping(
+    1, this->simulation_parameters.fem_parameters.qmapping_all);
+
+  FEValues<dim> fe_values_void_fraction(mapping,
+                                        this->fe_void_fraction,
+                                        quadrature_formula,
+                                        update_values |
+                                          update_quadrature_points |
+                                          update_JxW_values | update_gradients);
+
+  const unsigned int dofs_per_cell = this->fe_void_fraction.dofs_per_cell;
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  const unsigned int                   n_q_points = quadrature_formula.size();
+  FullMatrix<double>  local_matrix_void_fraction(dofs_per_cell, dofs_per_cell);
+  Vector<double>      local_rhs_void_fraction(dofs_per_cell);
+  std::vector<double> phi_vf(dofs_per_cell);
+  std::vector<typename DoFHandler<dim>::active_cell_iterator> active_neighbors;
+
+  double R_sphere;
+  double reference_sphere_volume;
+  double particles_volume_in_sphere;
+  double particle_volume_in_cell;
+  double quadrature_void_fraction;
+
+  for (const auto &cell :
+       this->void_fraction_dof_handler.active_cell_iterators())
+    {
+      if (cell->is_locally_owned())
+        {
+          fe_values_void_fraction.reinit(cell);
+          active_neighbors.clear();
+
+          local_matrix_void_fraction = 0;
+          local_rhs_void_fraction    = 0;
+
+          if (dim == 2)
+            R_sphere = (std::sqrt(cell->measure() / M_PI));
+          else if (dim == 3)
+            R_sphere = (pow(3 * cell->measure() / (4 * M_PI), 1. / 3.));
+
+          reference_sphere_volume = M_PI * pow((R_sphere * 2), dim) / (2 * dim);
+
+          active_neighbors =
+            LetheGridTools::find_cells_around_cell<dim>(vertices_to_cell, cell);
+
+          // Array of reference locations for the quadrature points
+          auto quadrature_point_location =
+            fe_values_void_fraction.get_quadrature_points();
+
+          for (unsigned int q = 0; q < n_q_points; ++q)
+            {
+              particles_volume_in_sphere               = 0;
+              unsigned int number_of_faces_on_boundary = 0;
+
+              for (const auto face_n : cell->face_indices())
+                if (cell->at_boundary(face_n))
+                  {
+                    number_of_faces_on_boundary += 1;
+                    auto point_on_face = GridTools::project_to_object(
+                      cell->face(face_n), quadrature_point_location[q]);
+
+                    double distance_to_face =
+                      point_on_face.distance(quadrature_point_location[q]);
+                    if (distance_to_face < R_sphere)
+                      {
+                        if (dim == 2)
+                          {
+                            double cap_volume = 2 * M_PI * R_sphere *
+                                                (R_sphere - distance_to_face);
+                            reference_sphere_volume -= cap_volume;
+                          }
+                        else if (dim == 3)
+                          {
+                            // R_sphere = distance_to_face;
+                            double cap_volume =
+                              M_PI * pow((R_sphere - distance_to_face), 2) *
+                              (3 * R_sphere - (R_sphere - distance_to_face)) /
+                              3;
+                            reference_sphere_volume -= cap_volume;
+                          }
+                      }
+                  }
+
+              // If the cell is at a corner, then calculate the void fraction in
+              // a sphere inscribed inside the cell
+              if (number_of_faces_on_boundary > 1)
+                {
+                  if (dim == 2)
+                    R_sphere = sqrt(cell->measure());
+                  else if (dim == 3)
+                    R_sphere = pow(cell->measure(), 1.0 / 3);
+
+                  reference_sphere_volume =
+                    M_PI * pow((R_sphere * 2), dim) / (2 * dim);
+
+                  active_neighbors.clear();
+                  active_neighbors.push_back(cell);
+                }
+
+              for (const auto &neighbor : active_neighbors)
+                {
+                  fe_values_void_fraction.reinit(neighbor);
+
+                  // Loop over particles in neighbor cell
+                  // Begin and end iterator for particles in neighbor cell
+
+                  const auto pic = particle_handler.particles_in_cell(neighbor);
+                  for (auto &particle : pic)
+                    {
+                      auto particle_properties = particle.get_properties();
+
+                      double r_particle =
+                        particle_properties[DEM::PropertiesIndex::dp] / 2;
+
+                      // Distance between particle and quadrature point
+                      double distance = particle.get_location().distance(
+                        quadrature_point_location[q]);
+
+                      // Particle completely in reference sphere
+                      if (distance <= abs(R_sphere - r_particle))
+                        particles_volume_in_sphere +=
+                          M_PI *
+                          pow(particle_properties[DEM::PropertiesIndex::dp],
+                              dim) /
+                          (2 * dim);
+
+                      // Particle completely outside reference sphere
+                      else if (distance >= abs(R_sphere + r_particle))
+                        particles_volume_in_sphere += 0;
+
+                      // Particle partially in reference sphere
+                      else if ((distance > abs(R_sphere - r_particle)) &&
+                               (distance < abs(R_sphere + r_particle)))
+                        {
+                          if (dim == 2)
+                            {
+                              particles_volume_in_sphere +=
+                                0.5 * sqrt((-distance + r_particle + R_sphere) *
+                                           (distance + r_particle - R_sphere) *
+                                           (distance - r_particle + R_sphere) *
+                                           (distance + r_particle + R_sphere));
+                            }
+                          else if (dim == 3)
+                            {
+                              particles_volume_in_sphere +=
+                                M_PI *
+                                pow((R_sphere + r_particle - distance), 2) *
+                                (pow(distance, 2) +
+                                 (2 * distance * r_particle) -
+                                 (3 * pow(r_particle, 2)) +
+                                 (2 * distance * R_sphere) +
+                                 (6 * R_sphere * r_particle) -
+                                 (3 * pow(R_sphere, 2)));
+                            }
+                        }
+                    }
+                }
+
+              // Calculate void fraction at quadrature point
+              quadrature_void_fraction =
+                (reference_sphere_volume - particles_volume_in_sphere) /
+                reference_sphere_volume;
+
+              for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  phi_vf[k] = fe_values_void_fraction.shape_value(k, q);
+                }
+
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  // Assemble L2 projection
+                  // Matrix assembly
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      local_matrix_void_fraction(i, j) +=
+                        (phi_vf[j] * phi_vf[i]) *
+                        fe_values_void_fraction.JxW(q);
+                    }
+
+                  local_rhs_void_fraction(i) += phi_vf[i] *
+                                                quadrature_void_fraction *
+                                                fe_values_void_fraction.JxW(q);
+                }
+
+              cell->get_dof_indices(local_dof_indices);
+              void_fraction_constraints.distribute_local_to_global(
+                local_matrix_void_fraction,
+                local_rhs_void_fraction,
+                local_dof_indices,
+                system_matrix_void_fraction,
+                system_rhs_void_fraction);
+            }
+        }
+    }
+
+  system_matrix_void_fraction.compress(VectorOperation::add);
+  system_rhs_void_fraction.compress(VectorOperation::add);
+}
+
 template <int dim>
 void
 GLSVANSSolver<dim>::solve_L2_system_void_fraction()
@@ -1064,6 +1282,7 @@ GLSVANSSolver<dim>::solve()
       if (this->simulation_control->is_at_start())
         {
           initialize_void_fraction();
+          vertices_cell_mapping();
           this->iterate();
         }
       else
@@ -1071,6 +1290,7 @@ GLSVANSSolver<dim>::solve()
           NavierStokesBase<dim, TrilinosWrappers::MPI::Vector, IndexSet>::
             refine_mesh();
           calculate_void_fraction(this->simulation_control->get_current_time());
+          vertices_cell_mapping();
           this->iterate();
         }
 
