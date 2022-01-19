@@ -21,3 +21,4 @@ In the parameter file format, the parameters are established one by one using th
     dem/dem
     unresolved_cfd-dem/unresolved_cfd-dem
     resolved_cfd-dem/resolved_cfd-dem
+    rpt/rpt
