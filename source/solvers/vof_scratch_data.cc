@@ -28,6 +28,7 @@ VOFScratchData<dim>::allocate()
   this->present_phase_values = std::vector<double>(n_q_points);
   this->phase_gradients      = std::vector<Tensor<1, dim>>(n_q_points);
   this->phase_laplacians     = std::vector<double>(n_q_points);
+ this->phase_hessians    = std::vector<Tensor<2, dim>>(n_q_points);
 
   // Velocity for BDF schemes
   this->previous_phase_values =

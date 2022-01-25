@@ -40,6 +40,11 @@ Parameters::Multiphysics::declare_parameters(ParameterHandler &prm)
                       Patterns::Bool(),
                       "Buoyant force calculation <true|false>");
 
+    prm.declare_entry("continuum surface force",
+                      "false",
+                      Patterns::Bool(),
+                      "Continuum surface force calculation <true|false>");
+
     // subparameter for heat_transfer
     prm.declare_entry("viscous dissipation",
                       "false",
@@ -73,6 +78,7 @@ Parameters::Multiphysics::parse_parameters(ParameterHandler &prm)
     VOF                  = prm.get_bool("VOF");
     interface_sharpening = prm.get_bool("interface sharpening");
     buoyancy_force       = prm.get_bool("buoyancy force");
+    continuum_surface_force = prm.get_bool("continuum surface force");
 
     // subparameter for heat_transfer
     viscous_dissipation = prm.get_bool("viscous dissipation");

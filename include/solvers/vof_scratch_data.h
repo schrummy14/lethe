@@ -162,6 +162,8 @@ public:
                                               this->phase_gradients);
     this->fe_values_fs.get_function_laplacians(current_solution,
                                                this->phase_laplacians);
+    this->fe_values_fs.get_function_hessians(current_solution,
+                                             this->phase_hessians);
 
 
     // Gather previous fs values
@@ -221,6 +223,7 @@ public:
   std::vector<double>              present_phase_values;
   std::vector<Tensor<1, dim>>      phase_gradients;
   std::vector<double>              phase_laplacians;
+  std::vector<Tensor<2, dim>>             phase_hessians;
   std::vector<std::vector<double>> previous_phase_values;
   std::vector<std::vector<double>> stages_phase_values;
 

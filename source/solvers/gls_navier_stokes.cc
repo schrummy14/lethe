@@ -425,6 +425,11 @@ GLSNavierStokesSolver<dim>::setup_assemblers()
             this->simulation_parameters.physical_properties));
         }
 
+      // Continuum Surface Force (CSF)
+      if (this->simulation_parameters.multiphysics.continuum_surface_force)
+      this->assemblers.push_back(std::make_shared<GLSNavierStokesVOFAssemblerCSF<dim>>(this->simulation_control, this->simulation_parameters.physical_properties));
+
+
       if (this->simulation_parameters.physical_properties.non_newtonian_flow)
         {
           // Core assembler with Non newtonian viscosity

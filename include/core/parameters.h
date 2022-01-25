@@ -313,6 +313,9 @@ namespace Parameters
     unsigned int              number_of_fluids;
     static const unsigned int max_fluids = 2;
 
+    // Surface tension coefficient
+    double surface_tension_coef;
+
     void
     declare_parameters(ParameterHandler &prm);
     void

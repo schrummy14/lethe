@@ -1,8 +1,10 @@
 #include <core/bdf.h>
 #include <core/time_integration_utilities.h>
+#include <core/utilities.h>
 
 #include <solvers/copy_data.h>
 #include <solvers/vof_assemblers.h>
+#include <deal.II/lac/full_matrix.h>
 
 
 
@@ -366,3 +368,73 @@ VOFAssemblerBDF<dim>::assemble_rhs(VOFScratchData<dim> &      scratch_data,
 
 template class VOFAssemblerBDF<2>;
 template class VOFAssemblerBDF<3>;
+
+
+template <int dim>
+void
+VOFAssemblerCSF<dim>::assemble_matrix(VOFScratchData<dim> &      /*scratch_data*/,
+                                      StabilizedMethodsCopyData & /*copy_data*/)
+{
+}
+
+template <int dim>
+void
+VOFAssemblerCSF<dim>::assemble_rhs(VOFScratchData<dim> &      scratch_data,
+                                   StabilizedMethodsCopyData &copy_data)
+{
+    double density      = this->physical_properties.fluids[0].density;
+    const double density_fluid_one = density;
+    const double density_fluid_two       = this->physical_properties.fluids[1].density;
+    const double denominator_inverse     = 1.0 / (0.5 * (density_fluid_one + density_fluid_two));
+    const double surface_tension_coef = this->physical_properties.surface_tension_coef;
+
+
+  // Loop and quadrature informations
+  const auto &       JxW        = scratch_data.JxW;
+  const unsigned int n_q_points = scratch_data.n_q_points;
+  const unsigned int n_dofs     = scratch_data.n_dofs;
+
+  // Copy data elements
+  auto &strong_residual = copy_data.strong_residual;
+  auto &local_rhs       = copy_data.local_rhs;
+
+  // Time stepping information
+  const auto          method = this->simulation_control->get_assembly_method();
+  std::vector<double> time_steps_vector =
+    this->simulation_control->get_time_steps_vector();
+
+  // Vector for the BDF coefficients
+  Vector<double>      bdf_coefs = bdf_coefficients(method, time_steps_vector);
+  std::vector<double> phase_value(1 + number_of_previous_solutions(method));
+
+  // Loop over the quadrature points
+  for (unsigned int q = 0; q < n_q_points; ++q)
+    {
+      phase_value[0] = scratch_data.present_phase_values[q];
+
+      density = calculate_point_property(
+        phase_value[0],
+        this->physical_properties.fluids[0].density,
+        this->physical_properties.fluids[1].density);
+
+
+      for (unsigned int i = 0; i < n_dofs; ++i)
+        {
+          const double phi_phase_i = scratch_data.phi[q][i];
+          const Tensor<2, dim> hess_phi_i = scratch_data.hess_phi[q][i];
+          const auto grad_phi_i = scratch_data.grad_phi[q][i];
+          const double grad_phi_i_norm = grad_phi_i.norm();
+          const double laplacian_phi_i = scratch_data.laplacian_phi[q][i];
+
+
+          double       local_rhs_i = 0;
+          double k = ((grad_phi_i * hess_phi_i * grad_phi_i) - (grad_phi_i_norm * grad_phi_i_norm * laplacian_phi_i)) / (grad_phi_i_norm * grad_phi_i_norm * grad_phi_i_norm);
+
+             local_rhs_i -= surface_tension_coef * density * denominator_inverse * k * grad_phi_i;
+          local_rhs(i) += local_rhs_i * JxW[q];
+        }
+    }
+}
+
+template class VOFAssemblerCSF<2>;
+template class VOFAssemblerCSF<3>;

@@ -71,6 +71,10 @@ GDNavierStokesSolver<dim>::setup_assemblers()
               this->simulation_parameters.physical_properties));
         }
 
+
+      // Continuum Surface Force (CSF)
+      this->assemblers.push_back(std::make_shared<GLSNavierStokesVOFAssemblerCSF<dim>>(this->simulation_control, this->simulation_parameters.physical_properties));
+
       // Core assembler
       this->assemblers.push_back(
         std::make_shared<GLSNavierStokesVOFAssemblerCore<dim>>(

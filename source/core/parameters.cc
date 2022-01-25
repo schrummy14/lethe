@@ -436,6 +436,11 @@ namespace Parameters
                         "Enable melting/freezing of fluids");
       phase_change_parameters.declare_parameters(prm);
 
+      prm.declare_entry("surface tension coefficient",
+                        "0.0",
+                        Patterns::Double(),
+                        "Surface tension coefficient");
+
       // Multiphasic simulations parameters definition
       for (unsigned int i_fluid = 0; i_fluid < max_fluids; ++i_fluid)
         {
@@ -458,6 +463,9 @@ namespace Parameters
       // Management of phase_change
       enable_phase_change = prm.get_bool("enable phase change");
       phase_change_parameters.parse_parameters(prm);
+
+      // Surface tension coefficient
+      surface_tension_coef = prm.get_double("surface tension coefficient");
 
       // Multiphasic simulations parameters definition
       number_of_fluids = prm.get_integer("number of fluids");
