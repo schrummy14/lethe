@@ -127,10 +127,11 @@ template <int dim>
 class GLSNavierStokesVOFAssemblerCSF : public NavierStokesAssemblerBase<dim>
 {
 public:
-  GLSNavierStokesVOFAssemblerCSF(std::shared_ptr<SimulationControl> p_simulation_control,
-                  Parameters::PhysicalProperties     p_physical_properties)
+  GLSNavierStokesVOFAssemblerCSF(
+    std::shared_ptr<SimulationControl> p_simulation_control,
+    Parameters::PhysicalProperties     p_physical_properties)
     : simulation_control(p_simulation_control)
-      , physical_properties(p_physical_properties)
+    , physical_properties(p_physical_properties)
   {}
 
   /**
@@ -140,8 +141,8 @@ public:
    */
 
   virtual void
-  assemble_matrix(NavierStokesScratchData<dim> &      scratch_data,
-                  StabilizedMethodsCopyData &copy_data) override;
+  assemble_matrix(NavierStokesScratchData<dim> &        scratch_data,
+                  StabilizedMethodsTensorCopyData<dim> &copy_data) override;
 
   /**
    * @brief assemble_rhs Assembles the rhs
@@ -149,10 +150,10 @@ public:
    * @param copy_data (see base class)
    */
   virtual void
-  assemble_rhs(NavierStokesScratchData<dim> &      scratch_data,
-               StabilizedMethodsCopyData &copy_data) override;
+  assemble_rhs(NavierStokesScratchData<dim> &        scratch_data,
+               StabilizedMethodsTensorCopyData<dim> &copy_data) override;
 
-  std::shared_ptr<SimulationControl> simulation_control;
+  std::shared_ptr<SimulationControl>   simulation_control;
   const Parameters::PhysicalProperties physical_properties;
 };
 

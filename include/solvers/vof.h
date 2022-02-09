@@ -484,7 +484,7 @@ private:
   TableHandler volume_table_fs;
 
   // Enable DCDD shock capturing scheme
-  const bool DCDD = true;
+  const bool DCDD = false;
 
   // Assemblers for the matrix and rhs
   std::vector<std::shared_ptr<VOFAssemblerBase<dim>>> assemblers;

@@ -72,12 +72,12 @@ Parameters::Multiphysics::parse_parameters(ParameterHandler &prm)
 {
   prm.enter_subsection("multiphysics");
   {
-    fluid_dynamics       = prm.get_bool("fluid dynamics");
-    heat_transfer        = prm.get_bool("heat transfer");
-    tracer               = prm.get_bool("tracer");
-    VOF                  = prm.get_bool("VOF");
-    interface_sharpening = prm.get_bool("interface sharpening");
-    buoyancy_force       = prm.get_bool("buoyancy force");
+    fluid_dynamics          = prm.get_bool("fluid dynamics");
+    heat_transfer           = prm.get_bool("heat transfer");
+    tracer                  = prm.get_bool("tracer");
+    VOF                     = prm.get_bool("VOF");
+    interface_sharpening    = prm.get_bool("interface sharpening");
+    buoyancy_force          = prm.get_bool("buoyancy force");
     continuum_surface_force = prm.get_bool("continuum surface force");
 
     // subparameter for heat_transfer

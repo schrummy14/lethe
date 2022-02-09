@@ -75,9 +75,14 @@ NavierStokesScratchData<dim>::enable_VOF(const FiniteElement<dim> &fe,
                                          const Quadrature<dim> &   quadrature,
                                          const Mapping<dim> &      mapping)
 {
-  gather_VOF    = true;
-  fe_values_VOF = std::make_shared<FEValues<dim>>(
-    mapping, fe, quadrature, update_values | update_gradients);
+  gather_VOF = true;
+  fe_values_VOF =
+    std::make_shared<FEValues<dim>>(mapping,
+                                    fe,
+                                    quadrature,
+                                    update_values | update_quadrature_points |
+                                      update_JxW_values | update_gradients |
+                                      update_hessians);
 
   // VOF
   phase_values = std::vector<double>(this->n_q_points);
@@ -85,6 +90,8 @@ NavierStokesScratchData<dim>::enable_VOF(const FiniteElement<dim> &fe,
     std::vector<std::vector<double>>(maximum_number_of_previous_solutions(),
                                      std::vector<double>(this->n_q_points));
   phase_gradient_values = std::vector<Tensor<1, dim>>(this->n_q_points);
+  phase_hessians        = std::vector<Tensor<2, dim>>(n_q_points);
+  phase_laplacians      = std::vector<double>(n_q_points);
 }
 
 
