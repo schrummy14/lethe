@@ -451,48 +451,57 @@ void
 VolumeOfFluid<dim>::modify_solution()
 {
   if (this->simulation_parameters.multiphysics.interface_sharpening)
-    {
-      // Limit the phase fractions between 0 and 1
-      update_solution_and_constraints(present_solution);
-      for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-        update_solution_and_constraints(previous_solutions[p]);
+      sharpen_interface();
 
-      // Interface sharpening is done at a constant frequency
-      if (this->simulation_control->get_step_number() %
-            this->simulation_parameters.interface_sharpening
-              .sharpening_frequency ==
-          0)
-        {
-          if (simulation_parameters.linear_solver.verbosity ==
-              Parameters::Verbosity::verbose)
-            {
-              this->pcout << "Sharpening interface at step "
-                          << this->simulation_control->get_step_number()
-                          << std::endl;
-            }
 
-          // Sharpen the interface of all solutions:
+  // ****** ADD HERE
+}
+
+template <int dim>
+void
+VolumeOfFluid<dim>::sharpen_interface()
+{
+    // Limit the phase fractions between 0 and 1
+    update_solution_and_constraints(present_solution);
+    for (unsigned int p = 0; p < previous_solutions.size(); ++p)
+      update_solution_and_constraints(previous_solutions[p]);
+
+    // Interface sharpening is done at a constant frequency
+    if (this->simulation_control->get_step_number() %
+          this->simulation_parameters.interface_sharpening
+            .sharpening_frequency ==
+        0)
+      {
+        if (simulation_parameters.linear_solver.verbosity ==
+            Parameters::Verbosity::verbose)
           {
-            // Assemble matrix and solve the system for interface sharpening
-            assemble_L2_projection_interface_sharpening(present_solution);
-            solve_interface_sharpening(present_solution);
-
-            for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-              {
-                assemble_L2_projection_interface_sharpening(
-                  previous_solutions[p]);
-                solve_interface_sharpening(previous_solutions[p]);
-              }
+            this->pcout << "Sharpening interface at step "
+                        << this->simulation_control->get_step_number()
+                        << std::endl;
           }
 
-          // Re limit the phase fractions between 0 and 1 after interface
-          // sharpening
-          update_solution_and_constraints(present_solution);
+        // Sharpen the interface of all solutions:
+        {
+          // Assemble matrix and solve the system for interface sharpening
+          assemble_L2_projection_interface_sharpening(present_solution);
+          solve_interface_sharpening(present_solution);
+
           for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-            update_solution_and_constraints(previous_solutions[p]);
+            {
+              assemble_L2_projection_interface_sharpening(
+                previous_solutions[p]);
+              solve_interface_sharpening(previous_solutions[p]);
+            }
         }
-    }
+
+        // Re limit the phase fractions between 0 and 1 after interface
+        // sharpening
+        update_solution_and_constraints(present_solution);
+        for (unsigned int p = 0; p < previous_solutions.size(); ++p)
+          update_solution_and_constraints(previous_solutions[p]);
+      }
 }
+
 
 template <int dim>
 void

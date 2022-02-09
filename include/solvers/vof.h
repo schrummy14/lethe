@@ -422,6 +422,12 @@ private:
   void
   assemble_mass_matrix_diagonal(TrilinosWrappers::SparseMatrix &mass_matrix);
 
+  /**
+   * @brief Carries out interface sharpening. It is called in the modify solution function.
+   */
+  void
+  sharpen_interface();
+
   TrilinosWrappers::MPI::Vector nodal_phase_fraction_owned;
 
   MultiphysicsInterface<dim> *     multiphysics;
