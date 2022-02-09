@@ -77,9 +77,6 @@ private:
   update_solution_and_constraints();
 
   void
-  initialize_void_fraction();
-
-  void
   particle_centered_method();
 
   void

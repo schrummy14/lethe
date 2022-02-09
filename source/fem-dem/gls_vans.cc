@@ -469,7 +469,7 @@ GLSVANSSolver<dim>::quadrature_centered_sphere_method()
   double R_sphere;
   double reference_sphere_volume;
   double particles_volume_in_sphere;
-  double particle_volume_in_cell;
+  double number_of_particles_in_cell;
   double quadrature_void_fraction;
 
   for (const auto &cell :
@@ -502,50 +502,62 @@ GLSVANSSolver<dim>::quadrature_centered_sphere_method()
               particles_volume_in_sphere               = 0;
               unsigned int number_of_faces_on_boundary = 0;
 
-              for (const auto face_n : cell->face_indices())
-                if (cell->at_boundary(face_n))
-                  {
-                    number_of_faces_on_boundary += 1;
-                    auto point_on_face = GridTools::project_to_object(
-                      cell->face(face_n), quadrature_point_location[q]);
+              // If cell is at boundary
+              //              for (const auto face_n : cell->face_indices())
+              //                if (cell->at_boundary(face_n))
+              //                  {
+              //                    number_of_faces_on_boundary += 1;
+              //                    auto point_on_face =
+              //                    GridTools::project_to_object(
+              //                      cell->face(face_n),
+              //                      quadrature_point_location[q]);
 
-                    double distance_to_face =
-                      point_on_face.distance(quadrature_point_location[q]);
-                    if (distance_to_face < R_sphere)
-                      {
-                        if (dim == 2)
-                          {
-                            double cap_volume = 2 * M_PI * R_sphere *
-                                                (R_sphere - distance_to_face);
-                            reference_sphere_volume -= cap_volume;
-                          }
-                        else if (dim == 3)
-                          {
-                            // R_sphere = distance_to_face;
-                            double cap_volume =
-                              M_PI * pow((R_sphere - distance_to_face), 2) *
-                              (3 * R_sphere - (R_sphere - distance_to_face)) /
-                              3;
-                            reference_sphere_volume -= cap_volume;
-                          }
-                      }
-                  }
+              //                    double distance_to_face =
+              //                      point_on_face.distance(quadrature_point_location[q]);
+              //                    if (distance_to_face < R_sphere)
+              //                      {
+              //                        if (dim == 2)
+              //                          {
+              //                            double cap_volume =
+              //                              pow(R_sphere, 2) /
+              //                                cos(distance_to_face / R_sphere)
+              //                                -
+              //                              distance_to_face *
+              //                              sqrt(pow(R_sphere, 2) -
+              //                                                      pow(distance_to_face,
+              //                                                      2));
+              //                            reference_sphere_volume -=
+              //                            cap_volume;
+              //                          }
+              //                        else if (dim == 3)
+              //                          {
+              //                            double cap_volume =
+              //                              M_PI * pow((R_sphere -
+              //                              distance_to_face), 2) * (3 *
+              //                              R_sphere - (R_sphere -
+              //                              distance_to_face)) / 3;
+              //                            reference_sphere_volume -=
+              //                            cap_volume / 2;
+              //                          }
+              //                      }
+              //                  }
 
               // If the cell is at a corner, then calculate the void fraction in
               // a sphere inscribed inside the cell
-              if (number_of_faces_on_boundary > 1)
-                {
-                  if (dim == 2)
-                    R_sphere = sqrt(cell->measure());
-                  else if (dim == 3)
-                    R_sphere = pow(cell->measure(), 1.0 / 3);
+              // if (number_of_faces_on_boundary > 1)
+              //                {
+              //                  if (dim == 2)
+              //                    R_sphere = sqrt(cell->measure());
+              //                  else if (dim == 3)
+              //                    R_sphere = pow(cell->measure(), 1.0 / 3);
 
-                  reference_sphere_volume =
-                    M_PI * pow((R_sphere * 2), dim) / (2 * dim);
+              //                  reference_sphere_volume =
+              //                    M_PI * pow((R_sphere * 2), dim) / (2 *
+              //                    dim);
 
-                  active_neighbors.clear();
-                  active_neighbors.push_back(cell);
-                }
+              //                  active_neighbors.clear();
+              //                  active_neighbors.push_back(cell);
+              //                }
 
               for (const auto &neighbor : active_neighbors)
                 {
@@ -585,6 +597,14 @@ GLSVANSSolver<dim>::quadrature_centered_sphere_method()
                           if (dim == 2)
                             {
                               particles_volume_in_sphere +=
+                                pow(r_particle, 2) /
+                                  (cos((pow(distance, 2) + pow(r_particle, 2) -
+                                        pow(R_sphere, 2)) /
+                                       (2 * distance * r_particle))) +
+                                pow(R_sphere, 2) /
+                                  (cos((pow(distance, 2) - pow(r_particle, 2) +
+                                        pow(R_sphere, 2)) /
+                                       (2 * distance * R_sphere))) -
                                 0.5 * sqrt((-distance + r_particle + R_sphere) *
                                            (distance + r_particle - R_sphere) *
                                            (distance - r_particle + R_sphere) *
@@ -600,7 +620,8 @@ GLSVANSSolver<dim>::quadrature_centered_sphere_method()
                                  (3 * pow(r_particle, 2)) +
                                  (2 * distance * R_sphere) +
                                  (6 * R_sphere * r_particle) -
-                                 (3 * pow(R_sphere, 2)));
+                                 (3 * pow(R_sphere, 2))) /
+                                (12 * distance);
                             }
                         }
                     }
