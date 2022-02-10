@@ -428,6 +428,46 @@ private:
   void
   sharpen_interface();
 
+  /**
+   * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
+   * fraction is used in find_filtered_interface_curvature to find interface curvature (k).
+   */
+  void
+  find_filtered_phase_fraction_gradient();
+
+  /**
+   * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
+   * fraction is used in find_filtered_interface_curvature to find interface curvature (k).
+   */
+  void
+  find_filtered_interface_curvature();
+
+  /**
+   * @brief Assembles the matrix and rhs for calculation of filtered phase gradient.
+   *
+   * @param solution VOF solution (phase fraction)
+   */
+  void
+  assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrappers::MPI::Vector &solution);
+
+  /**
+   * @brief Solves phase gradient system.
+   */
+  void
+  solve_phase_fraction_gradient();
+
+  /**
+   * @brief Assembles the matrix and rhs for calculation of the interface curvature.
+   */
+  void
+  assemble_curvature_matrix_and_rhs();
+
+  /**
+   * @brief Solves interface curvature system.
+   */
+  void
+  solve_curvature();
+
   TrilinosWrappers::MPI::Vector nodal_phase_fraction_owned;
 
   MultiphysicsInterface<dim> *     multiphysics;
@@ -472,6 +512,14 @@ private:
   IndexSet                       active_set;
   TrilinosWrappers::SparseMatrix mass_matrix;
 
+  // Filtered phase fraction gradient solution
+    TrilinosWrappers::SparseMatrix             system_matrix_phase_fraction_gradient;
+  TrilinosWrappers::SparseMatrix complete_system_matrix_phase_fraction_gradient;
+  TrilinosWrappers::MPI::Vector  system_rhs_phase_fraction_gradient;
+  TrilinosWrappers::MPI::Vector  complete_system_rhs_phase_fraction_gradient;
+
+
+
   std::shared_ptr<TrilinosWrappers::PreconditionILU> ilu_preconditioner;
 
 
@@ -494,6 +542,10 @@ private:
 
   // Assemblers for the matrix and rhs
   std::vector<std::shared_ptr<VOFAssemblerBase<dim>>> assemblers;
+
+  // ***** TEMPORARY MOVE IT TO THE PARAMTERES
+  const double phase_fraction_gradient_filter_value = 0.1;
+  const double curvature_filter_value = 0.1;
 };
 
 

@@ -453,8 +453,11 @@ VolumeOfFluid<dim>::modify_solution()
   if (this->simulation_parameters.multiphysics.interface_sharpening)
       sharpen_interface();
 
-
-  // ****** ADD HERE
+    if (this->simulation_parameters.multiphysics.continuum_surface_force)
+       {
+        find_filtered_phase_fraction_gradient();
+        find_filtered_interface_curvature();
+    }
 }
 
 template <int dim>
@@ -502,6 +505,123 @@ VolumeOfFluid<dim>::sharpen_interface()
       }
 }
 
+template <int dim>
+void
+VolumeOfFluid<dim>::find_filtered_phase_fraction_gradient()
+{
+    assemble_phase_fraction_gradient_matrix_and_rhs(present_solution);
+    solve_phase_fraction_gradient();
+}
+
+template <int dim>
+void
+VolumeOfFluid<dim>::find_filtered_interface_curvature()
+{
+    assemble_curvature_matrix_and_rhs();
+    solve_curvature();
+}
+
+template <int dim>
+void
+VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrappers::MPI::Vector &solution)
+{
+    FEValues<dim> fe_values_phase_fraction_gradient(*this->fs_mapping,
+                                           *this->fe,
+                                           *this->cell_quadrature,
+                                           update_values |
+                                             update_quadrature_points |
+                                             update_JxW_values |
+                                             update_gradients);
+
+    const unsigned int dofs_per_cell = this->fe->dofs_per_cell;
+    const unsigned int n_q_points    = this->cell_quadrature->size();
+    FullMatrix<double> local_matrix_phase_fraction_gradient(dofs_per_cell, dofs_per_cell);
+    Vector<double>     local_rhs_phase_fraction_gradient(dofs_per_cell);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    std::vector<double>                  phi_phase(dofs_per_cell);
+    std::vector<Tensor<1, dim>>                  phi_phase_gradient(dofs_per_cell);
+    std::vector<Tensor<1, dim>> phase_gradient_values(n_q_points);
+
+    system_rhs_phase_fraction    = 0;
+    system_matrix_phase_fraction = 0;
+
+    for (const auto &cell : this->dof_handler.active_cell_iterators())
+      {
+        if (cell->is_locally_owned())
+          {
+            fe_values_phase_fraction_gradient.reinit(cell);
+
+            local_matrix_phase_fraction_gradient = 0;
+            local_rhs_phase_fraction_gradient    = 0;
+
+            fe_values_phase_fraction_gradient.get_function_gradients(solution,
+                                                      phase_gradient_values);
+
+            for (unsigned int q = 0; q < n_q_points; ++q)
+              {
+                Tensor<1, dim> phase_gradient = phase_gradient_values[q];
+
+
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                  {
+                    phi_phase[k]           = fe_values_phase_fraction_gradient.shape_value(k, q);
+                    phi_phase_gradient[k] = fe_values_phase_fraction_gradient.shape_grad(k, q);
+                  }
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  {
+                    // Matrix assembly
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      {
+
+                        // $$ (if $$
+                local_matrix_phase_fraction_gradient(i, j) += (scalar_product(phi_phase_gradient[j], phi_phase_gradient[i]) + phase_fraction_gradient_filter_value * phi_phase[j] * phi_phase[i]) *
+                        fe_values_phase_fraction_gradient.JxW(q);
+                      }
+
+                    // $$ (if $$
+                      local_rhs_phase_fraction_gradient(i) += phase_gradient *  phi_phase_gradient[i] * fe_values_phase_fraction_gradient.JxW(q);
+                  }
+              }
+            cell->get_dof_indices(local_dof_indices);
+            nonzero_constraints.distribute_local_to_global(
+              local_matrix_phase_fraction_gradient,
+              local_rhs_phase_fraction_gradient,
+              local_dof_indices,
+              system_matrix_phase_fraction_gradient,
+              system_rhs_phase_fraction_gradient);
+          }
+      }
+
+    system_matrix_phase_fraction_gradient.compress(VectorOperation::add);
+    system_rhs_phase_fraction_gradient.compress(VectorOperation::add);
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+template <int dim>
+void
+VolumeOfFluid<dim>::solve_phase_fraction_gradient()
+{}
+
+template <int dim>
+void
+VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs()
+{}
+
+template <int dim>
+void
+VolumeOfFluid<dim>::solve_curvature()
+{}
 
 template <int dim>
 void
@@ -691,6 +811,22 @@ VolumeOfFluid<dim>::setup_dofs()
 
   complete_system_rhs_phase_fraction.reinit(locally_owned_dofs,
                                             mpi_communicator);
+
+  // Initialization of phase fraction gradient matrice and rhs for the
+  // calculation surface tension force
+  system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs,
+                                      locally_owned_dofs,
+                                      dsp,
+                                      mpi_communicator);
+
+  complete_system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs,
+                                               locally_owned_dofs,
+                                               dsp,
+                                               mpi_communicator);
+
+  complete_system_rhs_phase_fraction_gradient.reinit(locally_owned_dofs,
+                                            mpi_communicator);
+
 
   // In update_solution_and_constraints (which limits the phase fraction
   // between 0 and 1, nodal_phase_fraction_owned copies the solution, then
