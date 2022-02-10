@@ -517,13 +517,13 @@ template <int dim>
 void
 VolumeOfFluid<dim>::find_filtered_interface_curvature()
 {
-    assemble_curvature_matrix_and_rhs();
+    assemble_curvature_matrix_and_rhs(present_phase_fraction_gradient_solution);
     solve_curvature();
 }
 
 template <int dim>
 void
-VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrappers::MPI::Vector &solution)
+VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(const TrilinosWrappers::MPI::Vector &solution)
 {
     FEValues<dim> fe_values_phase_fraction_gradient(*this->fs_mapping,
                                            *this->fe,
@@ -574,7 +574,7 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrap
                       {
 
                         // $$ (if $$
-                local_matrix_phase_fraction_gradient(i, j) += (scalar_product(phi_phase_gradient[j], phi_phase_gradient[i]) + phase_fraction_gradient_filter_value * phi_phase[j] * phi_phase[i]) *
+                local_matrix_phase_fraction_gradient(i, j) += (scalar_product(phi_phase_gradient[j], phi_phase_gradient[i]) + this->simulation_parameters.surface_tension_force.phase_fraction_gradient_filter_value * phi_phase[j] * phi_phase[i]) *
                         fe_values_phase_fraction_gradient.JxW(q);
                       }
 
@@ -594,16 +594,6 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrap
 
     system_matrix_phase_fraction_gradient.compress(VectorOperation::add);
     system_rhs_phase_fraction_gradient.compress(VectorOperation::add);
-
-
-
-
-
-
-
-
-
-
 }
 
 
@@ -611,12 +601,59 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(TrilinosWrap
 template <int dim>
 void
 VolumeOfFluid<dim>::solve_phase_fraction_gradient()
-{}
+{
+    // Solve the L2 projection system
+    const double linear_solver_tolerance = 1e-15;
+
+    TrilinosWrappers::MPI::Vector completely_distributed_phase_fraction_gradient_solution(
+      this->locally_owned_dofs, triangulation->get_communicator());
+
+    SolverControl solver_control(
+      this->simulation_parameters.linear_solver.max_iterations,
+      linear_solver_tolerance,
+      true,
+      true);
+
+    TrilinosWrappers::SolverCG solver(solver_control);
+
+    const double ilu_fill =
+      this->simulation_parameters.linear_solver.ilu_precond_fill;
+    const double ilu_atol =
+      this->simulation_parameters.linear_solver.ilu_precond_atol;
+    const double ilu_rtol =
+      this->simulation_parameters.linear_solver.ilu_precond_rtol;
+
+    TrilinosWrappers::PreconditionILU::AdditionalData preconditionerOptions(
+      ilu_fill, ilu_atol, ilu_rtol, 0);
+
+    ilu_preconditioner = std::make_shared<TrilinosWrappers::PreconditionILU>();
+
+    ilu_preconditioner->initialize(system_matrix_phase_fraction_gradient,
+                                   preconditionerOptions);
+
+    solver.solve(system_matrix_phase_fraction_gradient,
+                 completely_distributed_phase_fraction_gradient_solution,
+                 system_rhs_phase_fraction_gradient,
+                 *ilu_preconditioner);
+
+    if (this->simulation_parameters.surface_tension_force.verbosity !=
+        Parameters::Verbosity::quiet)
+      {
+        this->pcout << "  -Iterative solver took : " << solver_control.last_step()
+                    << " steps " << std::endl;
+      }
+
+    nonzero_constraints.distribute(
+      completely_distributed_phase_fraction_gradient_solution);
+    present_phase_fraction_gradient_solution = completely_distributed_phase_fraction_gradient_solution;
+}
 
 template <int dim>
 void
-VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs()
-{}
+VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs(const TrilinosWrappers::MPI::Vector  &present_phase_fraction_gradient_solution)
+{
+
+}
 
 template <int dim>
 void
