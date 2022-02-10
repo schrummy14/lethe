@@ -601,8 +601,8 @@ GLSNavierStokesVOFAssemblerCSF<dim>::assemble_rhs(
           //         phase_gradient_norm + DBL_MIN);
 
           // local_rhs_i += surface_tension_coef * density * denominator_inverse
-          // * phase_gradient / (phase_gradient_norm + DBL_MIN) * (grad_phi_u_i *
-          // phase_gradient + phi_u_i * phase_laplacian);
+          // * phase_gradient / (phase_gradient_norm + DBL_MIN) * (grad_phi_u_i
+          // * phase_gradient + phi_u_i * phase_laplacian);
           local_rhs_i +=
             surface_tension_coef * density * denominator_inverse *
             phase_gradient / (phase_gradient_norm + DBL_MIN) *

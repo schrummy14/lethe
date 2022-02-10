@@ -392,8 +392,9 @@ namespace Parameters
   {
     prm.enter_subsection("surface tension force");
     {
-      phase_fraction_gradient_filter_value = prm.get_double("phase fraction gradient filter");
-      curvature_filter_value  = prm.get_double("curvature filter");
+      phase_fraction_gradient_filter_value =
+        prm.get_double("phase fraction gradient filter");
+      curvature_filter_value = prm.get_double("curvature filter");
 
       const std::string op = prm.get("verbosity");
       if (op == "verbose")

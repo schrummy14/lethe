@@ -430,14 +430,16 @@ private:
 
   /**
    * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
-   * fraction is used in find_filtered_interface_curvature to find interface curvature (k).
+   * fraction is used in find_filtered_interface_curvature to find interface
+   * curvature (k).
    */
   void
   find_filtered_phase_fraction_gradient();
 
   /**
    * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
-   * fraction is used in find_filtered_interface_curvature to find interface curvature (k).
+   * fraction is used in find_filtered_interface_curvature to find interface
+   * curvature (k).
    */
   void
   find_filtered_interface_curvature();
@@ -448,7 +450,8 @@ private:
    * @param solution VOF solution (phase fraction)
    */
   void
-  assemble_phase_fraction_gradient_matrix_and_rhs(const TrilinosWrappers::MPI::Vector &solution);
+  assemble_phase_fraction_gradient_matrix_and_rhs(
+    const TrilinosWrappers::MPI::Vector &solution);
 
   /**
    * @brief Solves phase gradient system.
@@ -513,23 +516,25 @@ private:
   TrilinosWrappers::SparseMatrix mass_matrix;
 
   // Filtered phase fraction gradient solution
-  TrilinosWrappers::MPI::Vector  present_phase_fraction_gradient_solution;
-  std::vector<TrilinosWrappers::MPI::Vector> previous_phase_fraction_gradient_solutions;
-  std::vector<TrilinosWrappers::MPI::Vector> phase_fraction_gradient_solution_stages;
-    TrilinosWrappers::SparseMatrix             system_matrix_phase_fraction_gradient;
+  TrilinosWrappers::MPI::Vector present_phase_fraction_gradient_solution;
+  std::vector<TrilinosWrappers::MPI::Vector>
+    previous_phase_fraction_gradient_solutions;
+  std::vector<TrilinosWrappers::MPI::Vector>
+                                 phase_fraction_gradient_solution_stages;
+  TrilinosWrappers::SparseMatrix system_matrix_phase_fraction_gradient;
   TrilinosWrappers::SparseMatrix complete_system_matrix_phase_fraction_gradient;
   TrilinosWrappers::MPI::Vector  system_rhs_phase_fraction_gradient;
   TrilinosWrappers::MPI::Vector  complete_system_rhs_phase_fraction_gradient;
 
 
   // Filtered curvature solution
-  TrilinosWrappers::MPI::Vector  present_curvature_solution;
+  TrilinosWrappers::MPI::Vector              present_curvature_solution;
   std::vector<TrilinosWrappers::MPI::Vector> previous_curvature_solutions;
   std::vector<TrilinosWrappers::MPI::Vector> curvature_solution_stages;
-    TrilinosWrappers::SparseMatrix             system_matrix_curvature;
-  TrilinosWrappers::SparseMatrix complete_system_matrix_curvature;
-  TrilinosWrappers::MPI::Vector  system_rhs_curvature;
-  TrilinosWrappers::MPI::Vector  complete_system_rhs_curvature;
+  TrilinosWrappers::SparseMatrix             system_matrix_curvature;
+  TrilinosWrappers::SparseMatrix             complete_system_matrix_curvature;
+  TrilinosWrappers::MPI::Vector              system_rhs_curvature;
+  TrilinosWrappers::MPI::Vector              complete_system_rhs_curvature;
 
 
   std::shared_ptr<TrilinosWrappers::PreconditionILU> ilu_preconditioner;

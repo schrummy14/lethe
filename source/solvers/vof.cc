@@ -451,12 +451,12 @@ void
 VolumeOfFluid<dim>::modify_solution()
 {
   if (this->simulation_parameters.multiphysics.interface_sharpening)
-      sharpen_interface();
+    sharpen_interface();
 
-    if (this->simulation_parameters.multiphysics.continuum_surface_force)
-       {
-        find_filtered_phase_fraction_gradient();
-        find_filtered_interface_curvature();
+  if (this->simulation_parameters.multiphysics.continuum_surface_force)
+    {
+      find_filtered_phase_fraction_gradient();
+      find_filtered_interface_curvature();
     }
 }
 
@@ -464,136 +464,144 @@ template <int dim>
 void
 VolumeOfFluid<dim>::sharpen_interface()
 {
-    // Limit the phase fractions between 0 and 1
-    update_solution_and_constraints(present_solution);
-    for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-      update_solution_and_constraints(previous_solutions[p]);
+  // Limit the phase fractions between 0 and 1
+  update_solution_and_constraints(present_solution);
+  for (unsigned int p = 0; p < previous_solutions.size(); ++p)
+    update_solution_and_constraints(previous_solutions[p]);
 
-    // Interface sharpening is done at a constant frequency
-    if (this->simulation_control->get_step_number() %
-          this->simulation_parameters.interface_sharpening
-            .sharpening_frequency ==
-        0)
-      {
-        if (simulation_parameters.linear_solver.verbosity ==
-            Parameters::Verbosity::verbose)
-          {
-            this->pcout << "Sharpening interface at step "
-                        << this->simulation_control->get_step_number()
-                        << std::endl;
-          }
-
-        // Sharpen the interface of all solutions:
+  // Interface sharpening is done at a constant frequency
+  if (this->simulation_control->get_step_number() %
+        this->simulation_parameters.interface_sharpening.sharpening_frequency ==
+      0)
+    {
+      if (simulation_parameters.linear_solver.verbosity ==
+          Parameters::Verbosity::verbose)
         {
-          // Assemble matrix and solve the system for interface sharpening
-          assemble_L2_projection_interface_sharpening(present_solution);
-          solve_interface_sharpening(present_solution);
-
-          for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-            {
-              assemble_L2_projection_interface_sharpening(
-                previous_solutions[p]);
-              solve_interface_sharpening(previous_solutions[p]);
-            }
+          this->pcout << "Sharpening interface at step "
+                      << this->simulation_control->get_step_number()
+                      << std::endl;
         }
 
-        // Re limit the phase fractions between 0 and 1 after interface
-        // sharpening
-        update_solution_and_constraints(present_solution);
+      // Sharpen the interface of all solutions:
+      {
+        // Assemble matrix and solve the system for interface sharpening
+        assemble_L2_projection_interface_sharpening(present_solution);
+        solve_interface_sharpening(present_solution);
+
         for (unsigned int p = 0; p < previous_solutions.size(); ++p)
-          update_solution_and_constraints(previous_solutions[p]);
+          {
+            assemble_L2_projection_interface_sharpening(previous_solutions[p]);
+            solve_interface_sharpening(previous_solutions[p]);
+          }
       }
+
+      // Re limit the phase fractions between 0 and 1 after interface
+      // sharpening
+      update_solution_and_constraints(present_solution);
+      for (unsigned int p = 0; p < previous_solutions.size(); ++p)
+        update_solution_and_constraints(previous_solutions[p]);
+    }
 }
 
 template <int dim>
 void
 VolumeOfFluid<dim>::find_filtered_phase_fraction_gradient()
 {
-    assemble_phase_fraction_gradient_matrix_and_rhs(present_solution);
-    solve_phase_fraction_gradient();
+  assemble_phase_fraction_gradient_matrix_and_rhs(present_solution);
+  solve_phase_fraction_gradient();
 }
 
 template <int dim>
 void
 VolumeOfFluid<dim>::find_filtered_interface_curvature()
 {
-    assemble_curvature_matrix_and_rhs(present_phase_fraction_gradient_solution);
-    solve_curvature();
+  assemble_curvature_matrix_and_rhs(present_phase_fraction_gradient_solution);
+  solve_curvature();
 }
 
 template <int dim>
 void
-VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(const TrilinosWrappers::MPI::Vector &solution)
+VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
+  const TrilinosWrappers::MPI::Vector &solution)
 {
-    FEValues<dim> fe_values_phase_fraction_gradient(*this->fs_mapping,
-                                           *this->fe,
-                                           *this->cell_quadrature,
-                                           update_values |
-                                             update_quadrature_points |
-                                             update_JxW_values |
-                                             update_gradients);
+  FEValues<dim> fe_values_phase_fraction_gradient(*this->fs_mapping,
+                                                  *this->fe,
+                                                  *this->cell_quadrature,
+                                                  update_values |
+                                                    update_quadrature_points |
+                                                    update_JxW_values |
+                                                    update_gradients);
 
-    const unsigned int dofs_per_cell = this->fe->dofs_per_cell;
-    const unsigned int n_q_points    = this->cell_quadrature->size();
-    FullMatrix<double> local_matrix_phase_fraction_gradient(dofs_per_cell, dofs_per_cell);
-    Vector<double>     local_rhs_phase_fraction_gradient(dofs_per_cell);
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-    std::vector<double>                  phi_phase(dofs_per_cell);
-    std::vector<Tensor<1, dim>>                  phi_phase_gradient(dofs_per_cell);
-    std::vector<Tensor<1, dim>> phase_gradient_values(n_q_points);
+  const unsigned int dofs_per_cell = this->fe->dofs_per_cell;
+  const unsigned int n_q_points    = this->cell_quadrature->size();
+  FullMatrix<double> local_matrix_phase_fraction_gradient(dofs_per_cell,
+                                                          dofs_per_cell);
+  Vector<double>     local_rhs_phase_fraction_gradient(dofs_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  std::vector<double>                  phi_phase(dofs_per_cell);
+  std::vector<Tensor<1, dim>>          phi_phase_gradient(dofs_per_cell);
+  std::vector<Tensor<1, dim>>          phase_gradient_values(n_q_points);
 
-    system_rhs_phase_fraction    = 0;
-    system_matrix_phase_fraction = 0;
+  system_rhs_phase_fraction    = 0;
+  system_matrix_phase_fraction = 0;
 
-    for (const auto &cell : this->dof_handler.active_cell_iterators())
-      {
-        if (cell->is_locally_owned())
-          {
-            fe_values_phase_fraction_gradient.reinit(cell);
+  for (const auto &cell : this->dof_handler.active_cell_iterators())
+    {
+      if (cell->is_locally_owned())
+        {
+          fe_values_phase_fraction_gradient.reinit(cell);
 
-            local_matrix_phase_fraction_gradient = 0;
-            local_rhs_phase_fraction_gradient    = 0;
+          local_matrix_phase_fraction_gradient = 0;
+          local_rhs_phase_fraction_gradient    = 0;
 
-            fe_values_phase_fraction_gradient.get_function_gradients(solution,
-                                                      phase_gradient_values);
+          fe_values_phase_fraction_gradient.get_function_gradients(
+            solution, phase_gradient_values);
 
-            for (unsigned int q = 0; q < n_q_points; ++q)
-              {
-                Tensor<1, dim> phase_gradient = phase_gradient_values[q];
+          for (unsigned int q = 0; q < n_q_points; ++q)
+            {
+              Tensor<1, dim> phase_gradient = phase_gradient_values[q];
 
 
-                for (unsigned int k = 0; k < dofs_per_cell; ++k)
-                  {
-                    phi_phase[k]           = fe_values_phase_fraction_gradient.shape_value(k, q);
-                    phi_phase_gradient[k] = fe_values_phase_fraction_gradient.shape_grad(k, q);
-                  }
-                for (unsigned int i = 0; i < dofs_per_cell; ++i)
-                  {
-                    // Matrix assembly
-                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                      {
-
-                        // $$ (if $$
-                local_matrix_phase_fraction_gradient(i, j) += (scalar_product(phi_phase_gradient[j], phi_phase_gradient[i]) + this->simulation_parameters.surface_tension_force.phase_fraction_gradient_filter_value * phi_phase[j] * phi_phase[i]) *
+              for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  phi_phase[k] =
+                    fe_values_phase_fraction_gradient.shape_value(k, q);
+                  phi_phase_gradient[k] =
+                    fe_values_phase_fraction_gradient.shape_grad(k, q);
+                }
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  // Matrix assembly
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      // $$ (if $$
+                      local_matrix_phase_fraction_gradient(i, j) +=
+                        (scalar_product(phi_phase_gradient[j],
+                                        phi_phase_gradient[i]) +
+                         this->simulation_parameters.surface_tension_force
+                             .phase_fraction_gradient_filter_value *
+                           phi_phase[j] * phi_phase[i]) *
                         fe_values_phase_fraction_gradient.JxW(q);
-                      }
+                    }
 
-                    // $$ (if $$
-                      local_rhs_phase_fraction_gradient(i) += phase_gradient *  phi_phase_gradient[i] * fe_values_phase_fraction_gradient.JxW(q);
-                  }
-              }
-            cell->get_dof_indices(local_dof_indices);
-            nonzero_constraints.distribute_local_to_global(
-              local_matrix_phase_fraction_gradient,
-              local_rhs_phase_fraction_gradient,
-              local_dof_indices,
-              system_matrix_phase_fraction_gradient,
-              system_rhs_phase_fraction_gradient);
-          }
-      }
+                  // $$ (if $$
+                  local_rhs_phase_fraction_gradient(i) +=
+                    phase_gradient * phi_phase_gradient[i] *
+                    fe_values_phase_fraction_gradient.JxW(q);
+                }
+            }
+          cell->get_dof_indices(local_dof_indices);
+          nonzero_constraints.distribute_local_to_global(
+            local_matrix_phase_fraction_gradient,
+            local_rhs_phase_fraction_gradient,
+            local_dof_indices,
+            system_matrix_phase_fraction_gradient,
+            system_rhs_phase_fraction_gradient);
+        }
+    }
 
-    system_matrix_phase_fraction_gradient.compress(VectorOperation::add);
-    system_rhs_phase_fraction_gradient.compress(VectorOperation::add);
+  system_matrix_phase_fraction_gradient.compress(VectorOperation::add);
+  system_rhs_phase_fraction_gradient.compress(VectorOperation::add);
 }
 
 
@@ -602,58 +610,59 @@ template <int dim>
 void
 VolumeOfFluid<dim>::solve_phase_fraction_gradient()
 {
-    // Solve the L2 projection system
-    const double linear_solver_tolerance = 1e-15;
+  // Solve the L2 projection system
+  const double linear_solver_tolerance = 1e-15;
 
-    TrilinosWrappers::MPI::Vector completely_distributed_phase_fraction_gradient_solution(
+  TrilinosWrappers::MPI::Vector
+    completely_distributed_phase_fraction_gradient_solution(
       this->locally_owned_dofs, triangulation->get_communicator());
 
-    SolverControl solver_control(
-      this->simulation_parameters.linear_solver.max_iterations,
-      linear_solver_tolerance,
-      true,
-      true);
+  SolverControl solver_control(
+    this->simulation_parameters.linear_solver.max_iterations,
+    linear_solver_tolerance,
+    true,
+    true);
 
-    TrilinosWrappers::SolverCG solver(solver_control);
+  TrilinosWrappers::SolverCG solver(solver_control);
 
-    const double ilu_fill =
-      this->simulation_parameters.linear_solver.ilu_precond_fill;
-    const double ilu_atol =
-      this->simulation_parameters.linear_solver.ilu_precond_atol;
-    const double ilu_rtol =
-      this->simulation_parameters.linear_solver.ilu_precond_rtol;
+  const double ilu_fill =
+    this->simulation_parameters.linear_solver.ilu_precond_fill;
+  const double ilu_atol =
+    this->simulation_parameters.linear_solver.ilu_precond_atol;
+  const double ilu_rtol =
+    this->simulation_parameters.linear_solver.ilu_precond_rtol;
 
-    TrilinosWrappers::PreconditionILU::AdditionalData preconditionerOptions(
-      ilu_fill, ilu_atol, ilu_rtol, 0);
+  TrilinosWrappers::PreconditionILU::AdditionalData preconditionerOptions(
+    ilu_fill, ilu_atol, ilu_rtol, 0);
 
-    ilu_preconditioner = std::make_shared<TrilinosWrappers::PreconditionILU>();
+  ilu_preconditioner = std::make_shared<TrilinosWrappers::PreconditionILU>();
 
-    ilu_preconditioner->initialize(system_matrix_phase_fraction_gradient,
-                                   preconditionerOptions);
+  ilu_preconditioner->initialize(system_matrix_phase_fraction_gradient,
+                                 preconditionerOptions);
 
-    solver.solve(system_matrix_phase_fraction_gradient,
-                 completely_distributed_phase_fraction_gradient_solution,
-                 system_rhs_phase_fraction_gradient,
-                 *ilu_preconditioner);
+  solver.solve(system_matrix_phase_fraction_gradient,
+               completely_distributed_phase_fraction_gradient_solution,
+               system_rhs_phase_fraction_gradient,
+               *ilu_preconditioner);
 
-    if (this->simulation_parameters.surface_tension_force.verbosity !=
-        Parameters::Verbosity::quiet)
-      {
-        this->pcout << "  -Iterative solver took : " << solver_control.last_step()
-                    << " steps " << std::endl;
-      }
+  if (this->simulation_parameters.surface_tension_force.verbosity !=
+      Parameters::Verbosity::quiet)
+    {
+      this->pcout << "  -Iterative solver took : " << solver_control.last_step()
+                  << " steps " << std::endl;
+    }
 
-    nonzero_constraints.distribute(
-      completely_distributed_phase_fraction_gradient_solution);
-    present_phase_fraction_gradient_solution = completely_distributed_phase_fraction_gradient_solution;
+  nonzero_constraints.distribute(
+    completely_distributed_phase_fraction_gradient_solution);
+  present_phase_fraction_gradient_solution =
+    completely_distributed_phase_fraction_gradient_solution;
 }
 
 template <int dim>
 void
-VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs(const TrilinosWrappers::MPI::Vector  &present_phase_fraction_gradient_solution)
-{
-
-}
+VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs(
+  const TrilinosWrappers::MPI::Vector &present_phase_fraction_gradient_solution)
+{}
 
 template <int dim>
 void
@@ -852,17 +861,17 @@ VolumeOfFluid<dim>::setup_dofs()
   // Initialization of phase fraction gradient matrice and rhs for the
   // calculation surface tension force
   system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs,
-                                      locally_owned_dofs,
-                                      dsp,
-                                      mpi_communicator);
-
-  complete_system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs,
                                                locally_owned_dofs,
                                                dsp,
                                                mpi_communicator);
 
+  complete_system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs,
+                                                        locally_owned_dofs,
+                                                        dsp,
+                                                        mpi_communicator);
+
   complete_system_rhs_phase_fraction_gradient.reinit(locally_owned_dofs,
-                                            mpi_communicator);
+                                                     mpi_communicator);
 
 
   // In update_solution_and_constraints (which limits the phase fraction

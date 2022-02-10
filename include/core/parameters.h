@@ -293,8 +293,8 @@ namespace Parameters
    */
   struct SurfaceTensionForce
   {
-      double phase_fraction_gradient_filter_value;
-      double curvature_filter_value;
+    double phase_fraction_gradient_filter_value;
+    double curvature_filter_value;
 
     // Type of verbosity for the surface tension force calculation
     Verbosity verbosity;
