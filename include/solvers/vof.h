@@ -80,10 +80,22 @@ public:
     else
       {
         // Usual case, for quad/hex meshes
-        fe         = std::make_shared<FE_Q<dim>>(1);
+        fe = std::make_shared<FE_Q<dim>>(1);
+        fe_phase_gradient =
+          std::make_shared<FESystem<dim>>(FE_Q<dim>(fe->degree), dim);
+
         fs_mapping = std::make_shared<MappingQ<dim>>(
           fe->degree, simulation_parameters.fem_parameters.qmapping_all);
-        cell_quadrature  = std::make_shared<QGauss<dim>>(fe->degree + 1);
+
+        fpg_mapping = std::make_shared<MappingQ<dim>>(
+          fe_phase_gradient->degree,
+          simulation_parameters.fem_parameters.qmapping_all);
+
+        cell_quadrature = std::make_shared<QGauss<dim>>(fe->degree + 1);
+
+        cell_quadrature_fpg =
+          std::make_shared<QGauss<dim>>(fe_phase_gradient->degree + 1);
+
         face_quadrature  = std::make_shared<QGauss<dim - 1>>(fe->degree + 1);
         error_quadrature = std::make_shared<QGauss<dim>>(fe->degree + 2);
       }
@@ -451,7 +463,7 @@ private:
    */
   void
   assemble_phase_fraction_gradient_matrix_and_rhs(
-    const TrilinosWrappers::MPI::Vector &solution);
+    TrilinosWrappers::MPI::Vector &solution);
 
   /**
    * @brief Solves phase gradient system.
@@ -463,7 +475,8 @@ private:
    * @brief Assembles the matrix and rhs for calculation of the interface curvature.
    */
   void
-  assemble_curvature_matrix_and_rhs();
+  assemble_curvature_matrix_and_rhs(
+    TrilinosWrappers::MPI::Vector &present_phase_fraction_gradient_solution);
 
   /**
    * @brief Solves interface curvature system.
@@ -482,11 +495,18 @@ private:
   DoFHandler<dim>                    dof_handler;
 
   std::shared_ptr<FiniteElement<dim>> fe;
-  ConvergenceTable                    error_table;
+  std::shared_ptr<FESystem<dim>>      fe_phase_gradient;
+
+
+  std::shared_ptr<FESystem<dim>> fe_test;
+
+  ConvergenceTable error_table;
 
   // Mapping and Quadrature
   std::shared_ptr<Mapping<dim>>        fs_mapping;
+  std::shared_ptr<MappingQ<dim>>       fpg_mapping;
   std::shared_ptr<Quadrature<dim>>     cell_quadrature;
+  std::shared_ptr<Quadrature<dim>>     cell_quadrature_fpg;
   std::shared_ptr<Quadrature<dim - 1>> face_quadrature;
   std::shared_ptr<Quadrature<dim>>     error_quadrature;
 
@@ -517,8 +537,11 @@ private:
 
   // Filtered phase fraction gradient solution
   TrilinosWrappers::MPI::Vector present_phase_fraction_gradient_solution;
-  std::vector<TrilinosWrappers::MPI::Vector>
-    previous_phase_fraction_gradient_solutions;
+  // Vector<double> & present_phase_fraction_gradient_solution;
+  // std::vector<Tensor<2, dim>>
+  // previous_phase_fraction_gradient_solutions;
+
+
   std::vector<TrilinosWrappers::MPI::Vector>
                                  phase_fraction_gradient_solution_stages;
   TrilinosWrappers::SparseMatrix system_matrix_phase_fraction_gradient;
