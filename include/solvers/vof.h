@@ -65,6 +65,7 @@ public:
     , triangulation(p_triangulation)
     , simulation_control(p_simulation_control)
     , dof_handler(*triangulation)
+    , pfg_dof_handler(*triangulation)
     , solution_transfer(dof_handler)
   {
     if (simulation_parameters.mesh.simplex)
@@ -493,12 +494,11 @@ private:
   std::shared_ptr<parallel::DistributedTriangulationBase<dim>> triangulation;
   std::shared_ptr<SimulationControl> simulation_control;
   DoFHandler<dim>                    dof_handler;
+  DoFHandler<dim>                    pfg_dof_handler;
 
   std::shared_ptr<FiniteElement<dim>> fe;
   std::shared_ptr<FESystem<dim>>      fe_phase_gradient;
 
-
-  std::shared_ptr<FESystem<dim>> fe_test;
 
   ConvergenceTable error_table;
 
@@ -537,11 +537,14 @@ private:
 
   // Filtered phase fraction gradient solution
   TrilinosWrappers::MPI::Vector present_phase_fraction_gradient_solution;
-  // Vector<double> & present_phase_fraction_gradient_solution;
+  IndexSet                      locally_owned_dofs_pfg;
+  IndexSet                      locally_relevant_dofs_pfg;
+  AffineConstraints<double>     pfg_constraints;
+  TrilinosWrappers::MPI::Vector nodal_pfg_relevant;
+  TrilinosWrappers::MPI::Vector nodal_pfg_owned;
+
   // std::vector<Tensor<2, dim>>
   // previous_phase_fraction_gradient_solutions;
-
-
   std::vector<TrilinosWrappers::MPI::Vector>
                                  phase_fraction_gradient_solution_stages;
   TrilinosWrappers::SparseMatrix system_matrix_phase_fraction_gradient;
