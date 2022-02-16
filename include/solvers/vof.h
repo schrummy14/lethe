@@ -66,13 +66,19 @@ public:
     , simulation_control(p_simulation_control)
     , dof_handler(*triangulation)
     , pfg_dof_handler(*triangulation)
+    , curvature_dof_handler(*triangulation)
     , solution_transfer(dof_handler)
   {
     if (simulation_parameters.mesh.simplex)
       {
         // for simplex meshes
-        fe              = std::make_shared<FE_SimplexP<dim>>(1);
-        fs_mapping      = std::make_shared<MappingFE<dim>>(*fe);
+        fe = std::make_shared<FE_SimplexP<dim>>(1);
+        // ****** ?
+        const FE_SimplexP<dim> fe_pfg(1);
+        fe_curvature      = std::make_shared<FE_SimplexP<dim>>(1);
+        fs_mapping        = std::make_shared<MappingFE<dim>>(*fe);
+        pfg_mapping       = std::make_shared<MappingFE<dim>>(fe_pfg);
+        curvature_mapping = std::make_shared<MappingFE<dim>>(*fe_curvature);
         cell_quadrature = std::make_shared<QGaussSimplex<dim>>(fe->degree + 1);
         face_quadrature =
           std::make_shared<QGaussSimplex<dim - 1>>(fe->degree + 1);
@@ -81,22 +87,17 @@ public:
     else
       {
         // Usual case, for quad/hex meshes
-        fe = std::make_shared<FE_Q<dim>>(1);
-        fe_phase_gradient =
-          std::make_shared<FESystem<dim>>(FE_Q<dim>(fe->degree), dim);
-
-        fs_mapping = std::make_shared<MappingQ<dim>>(
+        fe     = std::make_shared<FE_Q<dim>>(1);
+        fe_pfg = std::make_shared<FESystem<dim>>(FE_Q<dim>(fe->degree), dim);
+        fe_curvature = std::make_shared<FE_Q<dim>>(1);
+        fs_mapping   = std::make_shared<MappingQ<dim>>(
           fe->degree, simulation_parameters.fem_parameters.qmapping_all);
-
-        fpg_mapping = std::make_shared<MappingQ<dim>>(
-          fe_phase_gradient->degree,
+        pfg_mapping = std::make_shared<MappingQ<dim>>(
+          fe_pfg->degree, simulation_parameters.fem_parameters.qmapping_all);
+        curvature_mapping = std::make_shared<MappingQ<dim>>(
+          fe_curvature->degree,
           simulation_parameters.fem_parameters.qmapping_all);
-
-        cell_quadrature = std::make_shared<QGauss<dim>>(fe->degree + 1);
-
-        cell_quadrature_fpg =
-          std::make_shared<QGauss<dim>>(fe_phase_gradient->degree + 1);
-
+        cell_quadrature  = std::make_shared<QGauss<dim>>(fe->degree + 1);
         face_quadrature  = std::make_shared<QGauss<dim - 1>>(fe->degree + 1);
         error_quadrature = std::make_shared<QGauss<dim>>(fe->degree + 2);
       }
@@ -447,7 +448,7 @@ private:
    * curvature (k).
    */
   void
-  find_filtered_phase_fraction_gradient();
+  find_filtered_pfg();
 
   /**
    * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
@@ -463,21 +464,20 @@ private:
    * @param solution VOF solution (phase fraction)
    */
   void
-  assemble_phase_fraction_gradient_matrix_and_rhs(
-    TrilinosWrappers::MPI::Vector &solution);
+  assemble_pfg_matrix_and_rhs(TrilinosWrappers::MPI::Vector &solution);
 
   /**
    * @brief Solves phase gradient system.
    */
   void
-  solve_phase_fraction_gradient();
+  solve_pfg();
 
   /**
    * @brief Assembles the matrix and rhs for calculation of the interface curvature.
    */
   void
   assemble_curvature_matrix_and_rhs(
-    TrilinosWrappers::MPI::Vector &present_phase_fraction_gradient_solution);
+    TrilinosWrappers::MPI::Vector &present_pfg_solution);
 
   /**
    * @brief Solves interface curvature system.
@@ -492,21 +492,21 @@ private:
 
   // Core elements for the VOF simulation
   std::shared_ptr<parallel::DistributedTriangulationBase<dim>> triangulation;
-  std::shared_ptr<SimulationControl> simulation_control;
-  DoFHandler<dim>                    dof_handler;
-  DoFHandler<dim>                    pfg_dof_handler;
-
+  std::shared_ptr<SimulationControl>  simulation_control;
+  DoFHandler<dim>                     dof_handler;
+  DoFHandler<dim>                     pfg_dof_handler;
+  DoFHandler<dim>                     curvature_dof_handler;
   std::shared_ptr<FiniteElement<dim>> fe;
-  std::shared_ptr<FESystem<dim>>      fe_phase_gradient;
-
-
-  ConvergenceTable error_table;
+  std::shared_ptr<FESystem<dim>>      fe_pfg;
+  std::shared_ptr<FiniteElement<dim>> fe_curvature;
+  ConvergenceTable                    error_table;
 
   // Mapping and Quadrature
-  std::shared_ptr<Mapping<dim>>        fs_mapping;
-  std::shared_ptr<MappingQ<dim>>       fpg_mapping;
-  std::shared_ptr<Quadrature<dim>>     cell_quadrature;
-  std::shared_ptr<Quadrature<dim>>     cell_quadrature_fpg;
+  std::shared_ptr<Mapping<dim>>    fs_mapping;
+  std::shared_ptr<Mapping<dim>>    pfg_mapping;
+  std::shared_ptr<Mapping<dim>>    curvature_mapping;
+  std::shared_ptr<Quadrature<dim>> cell_quadrature;
+  // std::shared_ptr<Quadrature<dim>>     cell_quadrature_pfg;
   std::shared_ptr<Quadrature<dim - 1>> face_quadrature;
   std::shared_ptr<Quadrature<dim>>     error_quadrature;
 
@@ -535,32 +535,38 @@ private:
   IndexSet                       active_set;
   TrilinosWrappers::SparseMatrix mass_matrix;
 
-  // Filtered phase fraction gradient solution
-  TrilinosWrappers::MPI::Vector present_phase_fraction_gradient_solution;
+  // Filtered phase fraction gradient (pfg) solution
+  TrilinosWrappers::MPI::Vector present_pfg_solution;
   IndexSet                      locally_owned_dofs_pfg;
   IndexSet                      locally_relevant_dofs_pfg;
   AffineConstraints<double>     pfg_constraints;
   TrilinosWrappers::MPI::Vector nodal_pfg_relevant;
   TrilinosWrappers::MPI::Vector nodal_pfg_owned;
 
-  // std::vector<Tensor<2, dim>>
-  // previous_phase_fraction_gradient_solutions;
-  std::vector<TrilinosWrappers::MPI::Vector>
-                                 phase_fraction_gradient_solution_stages;
-  TrilinosWrappers::SparseMatrix system_matrix_phase_fraction_gradient;
-  TrilinosWrappers::SparseMatrix complete_system_matrix_phase_fraction_gradient;
-  TrilinosWrappers::MPI::Vector  system_rhs_phase_fraction_gradient;
-  TrilinosWrappers::MPI::Vector  complete_system_rhs_phase_fraction_gradient;
+  // ****** if needed?
+  std::vector<TrilinosWrappers::MPI::Vector> pfg_solution_stages;
+  TrilinosWrappers::SparseMatrix             system_matrix_pfg;
+  TrilinosWrappers::SparseMatrix             complete_system_matrix_pfg;
+  TrilinosWrappers::MPI::Vector              system_rhs_pfg;
+  TrilinosWrappers::MPI::Vector              complete_system_rhs_pfg;
 
 
   // Filtered curvature solution
-  TrilinosWrappers::MPI::Vector              present_curvature_solution;
+  TrilinosWrappers::MPI::Vector present_curvature_solution;
+  IndexSet                      locally_owned_dofs_curvature;
+  IndexSet                      locally_relevant_dofs_curvature;
+  AffineConstraints<double>     curvature_constraints;
+  TrilinosWrappers::MPI::Vector nodal_curvature_relevant;
+  TrilinosWrappers::MPI::Vector nodal_curvature_owned;
+
+  // ***** if needed?
   std::vector<TrilinosWrappers::MPI::Vector> previous_curvature_solutions;
   std::vector<TrilinosWrappers::MPI::Vector> curvature_solution_stages;
-  TrilinosWrappers::SparseMatrix             system_matrix_curvature;
-  TrilinosWrappers::SparseMatrix             complete_system_matrix_curvature;
-  TrilinosWrappers::MPI::Vector              system_rhs_curvature;
-  TrilinosWrappers::MPI::Vector              complete_system_rhs_curvature;
+
+  TrilinosWrappers::SparseMatrix system_matrix_curvature;
+  TrilinosWrappers::SparseMatrix complete_system_matrix_curvature;
+  TrilinosWrappers::MPI::Vector  system_rhs_curvature;
+  TrilinosWrappers::MPI::Vector  complete_system_rhs_curvature;
 
 
   std::shared_ptr<TrilinosWrappers::PreconditionILU> ilu_preconditioner;

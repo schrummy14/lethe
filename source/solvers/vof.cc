@@ -234,18 +234,29 @@ VolumeOfFluid<dim>::copy_local_rhs_to_global_rhs(
                                               system_rhs);
 }
 
-
-
 template <int dim>
 void
 VolumeOfFluid<dim>::attach_solution_to_output(DataOut<dim> &data_out)
 {
   data_out.add_data_vector(dof_handler, present_solution, "phase");
 
+
+  std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    pfg_component_interpretation(
+      dim + 1, DataComponentInterpretation::component_is_scalar);
+  for (unsigned int i = 0; i < dim; ++i)
+    pfg_component_interpretation[i] =
+      DataComponentInterpretation::component_is_part_of_vector;
+
+  data_out.add_data_vector(pfg_dof_handler,
+                           present_pfg_solution,
+                           "pfg",
+                           pfg_component_interpretation);
+
   // ******* TEMPORARY
-  // data_out.add_data_vector(pfg_dof_handler,
-  //                      present_phase_fraction_gradient_solution,
-  //                       "phase_gradient");
+  data_out.add_data_vector(curvature_dof_handler,
+                           present_curvature_solution,
+                           "curvature");
 }
 
 template <int dim>
@@ -460,7 +471,7 @@ VolumeOfFluid<dim>::modify_solution()
 
   if (this->simulation_parameters.multiphysics.continuum_surface_force)
     {
-      find_filtered_phase_fraction_gradient();
+      find_filtered_pfg();
       find_filtered_interface_curvature();
     }
 }
@@ -510,16 +521,16 @@ VolumeOfFluid<dim>::sharpen_interface()
 
 template <int dim>
 void
-VolumeOfFluid<dim>::find_filtered_phase_fraction_gradient()
+VolumeOfFluid<dim>::find_filtered_pfg()
 {
-  assemble_phase_fraction_gradient_matrix_and_rhs(present_solution);
-  solve_phase_fraction_gradient();
+  assemble_pfg_matrix_and_rhs(present_solution);
+  solve_pfg();
 
   // for (unsigned int p = 0; p < previous_solutions.size(); ++p)
   // {
-  //   assemble_phase_fraction_gradient_matrix_and_rhs(previous_solutions[p]);
+  //   assemble_pfg_matrix_and_rhs(previous_solutions[p]);
   // **********************
-  //  solve_phase_fraction_gradient();
+  //  solve_pfg();
   // }
 }
 
@@ -527,15 +538,16 @@ template <int dim>
 void
 VolumeOfFluid<dim>::find_filtered_interface_curvature()
 {
-  assemble_curvature_matrix_and_rhs(present_phase_fraction_gradient_solution);
+  assemble_curvature_matrix_and_rhs(present_pfg_solution);
   solve_curvature();
 }
 
 template <int dim>
 void
-VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
+VolumeOfFluid<dim>::assemble_pfg_matrix_and_rhs(
   TrilinosWrappers::MPI::Vector &solution)
 {
+  // ************** need all?
   FEValues<dim> fe_values_phase_fraction(*this->fs_mapping,
                                          *this->fe,
                                          *this->cell_quadrature,
@@ -546,22 +558,19 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
 
 
 
-  FEValues<dim> fe_values_phase_fraction_gradient(*this->fs_mapping,
-                                                  *this->fe_phase_gradient,
-                                                  *this->cell_quadrature,
-                                                  update_values |
-                                                    update_quadrature_points |
-                                                    update_JxW_values |
-                                                    update_gradients);
+  FEValues<dim> fe_values_pfg(*this->fs_mapping,
+                              *this->fe_pfg,
+                              *this->cell_quadrature,
+                              update_values | update_quadrature_points |
+                                update_JxW_values | update_gradients);
 
 
   // const unsigned int dofs_per_cell = this->fe->dofs_per_cell;
-  const unsigned int dofs_per_cell = this->fe_phase_gradient->dofs_per_cell;
+  const unsigned int dofs_per_cell = this->fe_pfg->dofs_per_cell;
 
   const unsigned int n_q_points = this->cell_quadrature->size();
-  FullMatrix<double> local_matrix_phase_fraction_gradient(dofs_per_cell,
-                                                          dofs_per_cell);
-  Vector<double>     local_rhs_phase_fraction_gradient(dofs_per_cell);
+  FullMatrix<double> local_matrix_pfg(dofs_per_cell, dofs_per_cell);
+  Vector<double>     local_rhs_pfg(dofs_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
   std::vector<Tensor<1, dim>> phi_pfg(dofs_per_cell);
@@ -574,8 +583,8 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
   std::vector<Tensor<2, dim>> pfg_gradient_values(n_q_points);
 
 
-  system_rhs_phase_fraction_gradient    = 0;
-  system_matrix_phase_fraction_gradient = 0;
+  system_rhs_pfg    = 0;
+  system_matrix_pfg = 0;
 
   for (const auto &cell : this->dof_handler.active_cell_iterators())
     {
@@ -586,34 +595,31 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
             cell->level(),
             cell->index(),
             &this->pfg_dof_handler);
-          fe_values_phase_fraction_gradient.reinit(pfg_cell);
+          fe_values_pfg.reinit(pfg_cell);
 
 
           fe_values_phase_fraction.reinit(cell);
-          fe_values_phase_fraction_gradient.reinit(pfg_cell);
+          fe_values_pfg.reinit(pfg_cell);
 
-          local_matrix_phase_fraction_gradient = 0;
-          local_rhs_phase_fraction_gradient    = 0;
+          local_matrix_pfg = 0;
+          local_rhs_pfg    = 0;
 
           fe_values_phase_fraction.get_function_gradients(
             solution, phase_gradient_values);
 
-          fe_values_phase_fraction_gradient[pfg].get_function_values(
-            present_phase_fraction_gradient_solution, pfg_values);
+          fe_values_pfg[pfg].get_function_values(present_pfg_solution,
+                                                 pfg_values);
 
-          fe_values_phase_fraction_gradient[pfg].get_function_gradients(
-            present_phase_fraction_gradient_solution, pfg_gradient_values);
+          fe_values_pfg[pfg].get_function_gradients(present_pfg_solution,
+                                                    pfg_gradient_values);
 
 
           for (unsigned int q = 0; q < n_q_points; ++q)
             {
-              Tensor<1, dim> phase_gradient = phase_gradient_values[q];
               for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 {
-                  phi_pfg[k] =
-                    fe_values_phase_fraction_gradient[pfg].value(k, q);
-                  phi_pfg_gradient[k] =
-                    fe_values_phase_fraction_gradient[pfg].gradient(k, q);
+                  phi_pfg[k]          = fe_values_pfg[pfg].value(k, q);
+                  phi_pfg_gradient[k] = fe_values_pfg[pfg].gradient(k, q);
                 }
 
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
@@ -621,50 +627,47 @@ VolumeOfFluid<dim>::assemble_phase_fraction_gradient_matrix_and_rhs(
                   // Matrix assembly
                   for (unsigned int j = 0; j < dofs_per_cell; ++j)
                     {
-                      local_matrix_phase_fraction_gradient(i, j) +=
+                      local_matrix_pfg(i, j) +=
                         (phi_pfg[j] * phi_pfg[i] +
-                         0.05 * scalar_product(phi_pfg_gradient[i],
-                                               phi_pfg_gradient[j])) *
-                        fe_values_phase_fraction_gradient.JxW(q);
+                         0.1 * scalar_product(phi_pfg_gradient[i],
+                                              phi_pfg_gradient[j])) *
+                        fe_values_pfg.JxW(q);
                     }
 
                   // rhs
-                  local_rhs_phase_fraction_gradient(i) -=
+                  local_rhs_pfg(i) -=
                     (phi_pfg[i] * pfg_values[q] +
-                     0.05 * scalar_product(phi_pfg_gradient[i],
-                                           pfg_gradient_values[q]) -
+                     0.1 * scalar_product(phi_pfg_gradient[i],
+                                          pfg_gradient_values[q]) -
                      phi_pfg[i] * phase_gradient_values[q]) *
-                    fe_values_phase_fraction_gradient.JxW(q);
+                    fe_values_pfg.JxW(q);
                 }
             }
 
           pfg_cell->get_dof_indices(local_dof_indices);
-          pfg_constraints.distribute_local_to_global(
-            local_matrix_phase_fraction_gradient,
-            local_rhs_phase_fraction_gradient,
-            local_dof_indices,
-            system_matrix_phase_fraction_gradient,
-            system_rhs_phase_fraction_gradient);
+          pfg_constraints.distribute_local_to_global(local_matrix_pfg,
+                                                     local_rhs_pfg,
+                                                     local_dof_indices,
+                                                     system_matrix_pfg,
+                                                     system_rhs_pfg);
         }
     }
-  system_matrix_phase_fraction_gradient.compress(VectorOperation::add);
-  system_rhs_phase_fraction_gradient.compress(VectorOperation::add);
+  system_matrix_pfg.compress(VectorOperation::add);
+  system_rhs_pfg.compress(VectorOperation::add);
 }
 
 
 template <int dim>
 void
-VolumeOfFluid<dim>::solve_phase_fraction_gradient()
+VolumeOfFluid<dim>::solve_pfg()
 {
-  // Solve the L2 projection system
+  // Solve the L2 projection system ***********************
   const double linear_solver_tolerance = 1e-10;
 
-  TrilinosWrappers::MPI::Vector
-    completely_distributed_phase_fraction_gradient_solution(
-      this->locally_owned_dofs_pfg, triangulation->get_communicator());
+  TrilinosWrappers::MPI::Vector completely_distributed_pfg_solution(
+    this->locally_owned_dofs_pfg, triangulation->get_communicator());
 
-  completely_distributed_phase_fraction_gradient_solution =
-    present_phase_fraction_gradient_solution;
+  completely_distributed_pfg_solution = present_pfg_solution;
 
   SolverControl solver_control(
     this->simulation_parameters.linear_solver.max_iterations,
@@ -686,11 +689,10 @@ VolumeOfFluid<dim>::solve_phase_fraction_gradient()
 
   ilu_preconditioner = std::make_shared<TrilinosWrappers::PreconditionILU>();
 
-  ilu_preconditioner->initialize(system_matrix_phase_fraction_gradient,
-                                 preconditionerOptions);
-  solver.solve(system_matrix_phase_fraction_gradient,
-               completely_distributed_phase_fraction_gradient_solution,
-               system_rhs_phase_fraction_gradient,
+  ilu_preconditioner->initialize(system_matrix_pfg, preconditionerOptions);
+  solver.solve(system_matrix_pfg,
+               completely_distributed_pfg_solution,
+               system_rhs_pfg,
                *ilu_preconditioner);
 
   if (this->simulation_parameters.surface_tension_force.verbosity !=
@@ -700,23 +702,169 @@ VolumeOfFluid<dim>::solve_phase_fraction_gradient()
                   << " steps " << std::endl;
     }
 
-  pfg_constraints.distribute(
-    completely_distributed_phase_fraction_gradient_solution);
+  pfg_constraints.distribute(completely_distributed_pfg_solution);
 
-  present_phase_fraction_gradient_solution =
-    completely_distributed_phase_fraction_gradient_solution;
+  present_pfg_solution = completely_distributed_pfg_solution;
 }
 
 template <int dim>
 void
 VolumeOfFluid<dim>::assemble_curvature_matrix_and_rhs(
-  TrilinosWrappers::MPI::Vector &present_phase_fraction_gradient_solution)
-{}
+  TrilinosWrappers::MPI::Vector &present_pfg_solution)
+{
+  // ******* need all?
+  FEValues<dim> fe_values_curvature(*this->curvature_mapping,
+                                    *this->fe_curvature,
+                                    *this->cell_quadrature,
+                                    update_values | update_quadrature_points |
+                                      update_JxW_values | update_gradients);
+
+  FEValues<dim> fe_values_pfg(*this->fs_mapping,
+                              *this->fe_pfg,
+                              *this->cell_quadrature,
+                              update_values | update_quadrature_points |
+                                update_JxW_values | update_gradients);
+
+  const unsigned int dofs_per_cell = this->fe_curvature->dofs_per_cell;
+
+  const unsigned int n_q_points = this->cell_quadrature->size();
+  FullMatrix<double> local_matrix_curvature(dofs_per_cell, dofs_per_cell);
+  Vector<double>     local_rhs_curvature(dofs_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+  std::vector<double>         phi_curvature(dofs_per_cell);
+  std::vector<Tensor<1, dim>> phi_curvature_gradient(dofs_per_cell);
+
+  std::vector<Tensor<1, dim>>      pfg_values(n_q_points);
+  std::vector<double>              curvature_values(n_q_points);
+  std::vector<Tensor<1, dim>>      curvature_gradient_values(n_q_points);
+  const FEValuesExtractors::Vector pfg(0);
+
+  system_rhs_curvature    = 0;
+  system_matrix_curvature = 0;
+
+  // *************** does it matter to loop over which dof handler cell
+  // iterator??
+  for (const auto &cell : this->pfg_dof_handler.active_cell_iterators())
+    {
+      if (cell->is_locally_owned())
+        {
+          typename DoFHandler<dim>::active_cell_iterator curvature_cell(
+            &(*this->triangulation),
+            cell->level(),
+            cell->index(),
+            &this->curvature_dof_handler);
+          fe_values_curvature.reinit(curvature_cell);
+
+          fe_values_pfg.reinit(cell);
+          fe_values_curvature.reinit(curvature_cell);
+
+          local_matrix_curvature = 0;
+          local_rhs_curvature    = 0;
+
+          fe_values_pfg[pfg].get_function_values(present_pfg_solution,
+                                                 pfg_values);
+
+          fe_values_curvature.get_function_values(present_curvature_solution,
+                                                  curvature_values);
+
+          fe_values_curvature.get_function_gradients(present_curvature_solution,
+                                                     curvature_gradient_values);
+
+          for (unsigned int q = 0; q < n_q_points; ++q)
+            {
+              for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  phi_curvature[k] = fe_values_curvature.shape_value(k, q);
+                  phi_curvature_gradient[k] =
+                    fe_values_curvature.shape_grad(k, q);
+                }
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  // Matrix assembly
+                  for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                    {
+                      // ******** 0.05 to filter value
+                      local_matrix_curvature(i, j) +=
+                        (phi_curvature[j] * phi_curvature[i] +
+                         0.1 * scalar_product(phi_curvature_gradient[i],
+                                              phi_curvature_gradient[j])) *
+                        fe_values_curvature.JxW(q);
+                    }
+                  // rhs
+                  local_rhs_curvature(i) -=
+                    (phi_curvature[i] * curvature_values[q] +
+                     0.1 * scalar_product(phi_curvature_gradient[i],
+                                          curvature_gradient_values[q]) -
+                     phi_curvature_gradient[i] *
+                       (pfg_values[q] / (pfg_values[q].norm() + DBL_MIN))) *
+                    fe_values_curvature.JxW(q);
+                }
+            }
+
+          curvature_cell->get_dof_indices(local_dof_indices);
+          curvature_constraints.distribute_local_to_global(
+            local_matrix_curvature,
+            local_rhs_curvature,
+            local_dof_indices,
+            system_matrix_curvature,
+            system_rhs_curvature);
+        }
+    }
+  system_matrix_curvature.compress(VectorOperation::add);
+  system_rhs_curvature.compress(VectorOperation::add);
+}
 
 template <int dim>
 void
 VolumeOfFluid<dim>::solve_curvature()
-{}
+{
+  // Solve the L2 projection system ***********************
+  const double linear_solver_tolerance = 1e-10;
+
+  TrilinosWrappers::MPI::Vector completely_distributed_curvature_solution(
+    this->locally_owned_dofs_curvature, triangulation->get_communicator());
+
+  completely_distributed_curvature_solution = present_curvature_solution;
+
+  SolverControl solver_control(
+    this->simulation_parameters.linear_solver.max_iterations,
+    linear_solver_tolerance,
+    true,
+    true);
+
+  TrilinosWrappers::SolverCG solver(solver_control);
+
+  const double ilu_fill =
+    this->simulation_parameters.linear_solver.ilu_precond_fill;
+  const double ilu_atol =
+    this->simulation_parameters.linear_solver.ilu_precond_atol;
+  const double ilu_rtol =
+    this->simulation_parameters.linear_solver.ilu_precond_rtol;
+
+  TrilinosWrappers::PreconditionILU::AdditionalData preconditionerOptions(
+    ilu_fill, ilu_atol, ilu_rtol, 0);
+
+  ilu_preconditioner = std::make_shared<TrilinosWrappers::PreconditionILU>();
+
+  ilu_preconditioner->initialize(system_matrix_curvature,
+                                 preconditionerOptions);
+  solver.solve(system_matrix_curvature,
+               completely_distributed_curvature_solution,
+               system_rhs_curvature,
+               *ilu_preconditioner);
+
+  if (this->simulation_parameters.surface_tension_force.verbosity !=
+      Parameters::Verbosity::quiet)
+    {
+      this->pcout << "  -Iterative solver took : " << solver_control.last_step()
+                  << " steps " << std::endl;
+    }
+
+  curvature_constraints.distribute(completely_distributed_curvature_solution);
+
+  present_curvature_solution = completely_distributed_curvature_solution;
+}
 
 template <int dim>
 void
@@ -834,7 +982,7 @@ VolumeOfFluid<dim>::setup_dofs()
 {
   auto mpi_communicator = triangulation->get_communicator();
 
-  pfg_dof_handler.distribute_dofs(*fe_phase_gradient);
+  pfg_dof_handler.distribute_dofs(*fe_pfg);
 
   locally_owned_dofs_pfg = pfg_dof_handler.locally_owned_dofs();
 
@@ -875,29 +1023,89 @@ VolumeOfFluid<dim>::setup_dofs()
 
   // Initialization of phase fraction gradient matrice and rhs for the
   // calculation surface tension force
-  system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs_pfg,
-                                               locally_owned_dofs_pfg,
-                                               dsp_pfg,
-                                               mpi_communicator);
+  system_matrix_pfg.reinit(locally_owned_dofs_pfg,
+                           locally_owned_dofs_pfg,
+                           dsp_pfg,
+                           mpi_communicator);
 
-  complete_system_matrix_phase_fraction_gradient.reinit(locally_owned_dofs_pfg,
-                                                        locally_owned_dofs_pfg,
-                                                        dsp_pfg,
-                                                        mpi_communicator);
+  complete_system_matrix_pfg.reinit(locally_owned_dofs_pfg,
+                                    locally_owned_dofs_pfg,
+                                    dsp_pfg,
+                                    mpi_communicator);
 
-  system_rhs_phase_fraction_gradient.reinit(locally_owned_dofs_pfg,
-                                            mpi_communicator);
+  system_rhs_pfg.reinit(locally_owned_dofs_pfg, mpi_communicator);
 
-  complete_system_rhs_phase_fraction_gradient.reinit(locally_owned_dofs_pfg,
-                                                     mpi_communicator);
+  complete_system_rhs_pfg.reinit(locally_owned_dofs_pfg, mpi_communicator);
 
 
   // ***********
-  present_phase_fraction_gradient_solution.reinit(locally_owned_dofs_pfg,
-                                                  locally_relevant_dofs_pfg,
-                                                  mpi_communicator);
+  present_pfg_solution.reinit(locally_owned_dofs_pfg,
+                              locally_relevant_dofs_pfg,
+                              mpi_communicator);
+
+  // Curvature
+  curvature_dof_handler.distribute_dofs(*fe_curvature);
+
+  locally_owned_dofs_curvature = curvature_dof_handler.locally_owned_dofs();
+
+  DoFTools::extract_locally_relevant_dofs(curvature_dof_handler,
+                                          locally_relevant_dofs_curvature);
+
+  curvature_constraints.clear();
+  curvature_constraints.reinit(locally_relevant_dofs_curvature);
+  DoFTools::make_hanging_node_constraints(curvature_dof_handler,
+                                          curvature_constraints);
+  curvature_constraints.close();
+
+  nodal_curvature_relevant.reinit(locally_owned_dofs_curvature,
+                                  locally_relevant_dofs_curvature,
+                                  mpi_communicator);
+
+  // for (unsigned int i = 0; i < previous_curvature.size(); ++i)
+  //   {
+  //    previous_curvature[i].reinit(locally_owned_dofs_curvature,
+  //                                     locally_relevant_dofs_curvature,
+  //                                    this->mpi_communicator);
+  //  }
+
+  nodal_curvature_owned.reinit(locally_owned_dofs_curvature, mpi_communicator);
 
 
+
+  DynamicSparsityPattern dsp_curvature(locally_relevant_dofs_curvature);
+  DoFTools::make_sparsity_pattern(curvature_dof_handler,
+                                  dsp_curvature,
+                                  curvature_constraints,
+                                  false);
+
+  SparsityTools::distribute_sparsity_pattern(dsp_curvature,
+                                             locally_owned_dofs_curvature,
+                                             mpi_communicator,
+                                             locally_relevant_dofs_curvature);
+
+
+  // Initialization of curvature matrice and rhs for the
+  // calculation surface tension force
+  system_matrix_curvature.reinit(locally_owned_dofs_curvature,
+                                 locally_owned_dofs_curvature,
+                                 dsp_curvature,
+                                 mpi_communicator);
+
+  complete_system_matrix_curvature.reinit(locally_owned_dofs_curvature,
+                                          locally_owned_dofs_curvature,
+                                          dsp_curvature,
+                                          mpi_communicator);
+
+  system_rhs_curvature.reinit(locally_owned_dofs_curvature, mpi_communicator);
+
+  complete_system_rhs_curvature.reinit(locally_owned_dofs_curvature,
+                                       mpi_communicator);
+
+
+  // ***********
+  present_curvature_solution.reinit(locally_owned_dofs_curvature,
+                                    locally_relevant_dofs_curvature,
+                                    mpi_communicator);
 
   dof_handler.distribute_dofs(*fe);
   DoFRenumbering::Cuthill_McKee(this->dof_handler);
