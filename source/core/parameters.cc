@@ -365,6 +365,11 @@ namespace Parameters
   {
     prm.enter_subsection("surface tension force");
     {
+      prm.declare_entry("output auxiliary fields",
+                        "false",
+                        Patterns::Bool(),
+                        "Output the phase fraction gradient and curvature");
+
       prm.declare_entry(
         "phase fraction gradient filter",
         "0.5",
@@ -395,6 +400,8 @@ namespace Parameters
       phase_fraction_gradient_filter_value =
         prm.get_double("phase fraction gradient filter");
       curvature_filter_value = prm.get_double("curvature filter");
+
+      output_VOF_auxiliary_fields = prm.get_bool("output auxiliary fields");
 
       const std::string op = prm.get("verbosity");
       if (op == "verbose")

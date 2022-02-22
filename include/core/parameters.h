@@ -296,6 +296,8 @@ namespace Parameters
     double phase_fraction_gradient_filter_value;
     double curvature_filter_value;
 
+    bool output_VOF_auxiliary_fields;
+
     // Type of verbosity for the surface tension force calculation
     Verbosity verbosity;
 

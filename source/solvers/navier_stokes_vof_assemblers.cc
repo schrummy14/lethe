@@ -526,91 +526,93 @@ GLSNavierStokesVOFAssemblerCSF<dim>::assemble_matrix(
 template <int dim>
 void
 GLSNavierStokesVOFAssemblerCSF<dim>::assemble_rhs(
-  NavierStokesScratchData<dim> &        scratch_data,
-  StabilizedMethodsTensorCopyData<dim> &copy_data)
+  NavierStokesScratchData<dim> & /*scratch_data*/,
+  StabilizedMethodsTensorCopyData<dim> & /*copy_data*/)
 {
-  double       density           = this->physical_properties.fluids[0].density;
-  const double density_fluid_one = density;
-  const double density_fluid_two = this->physical_properties.fluids[1].density;
-  const double denominator_inverse =
-    1.0 / (0.5 * (density_fluid_one + density_fluid_two));
-  const double surface_tension_coef =
-    this->physical_properties.surface_tension_coef;
+  /*
+double       density           = this->physical_properties.fluids[0].density;
+const double density_fluid_one = density;
+const double density_fluid_two = this->physical_properties.fluids[1].density;
+const double denominator_inverse =
+  1.0 / (0.5 * (density_fluid_one + density_fluid_two));
+const double surface_tension_coef =
+  this->physical_properties.surface_tension_coef;
 
 
-  // Loop and quadrature informations
-  const auto &       JxW        = scratch_data.JxW;
-  const unsigned int n_q_points = scratch_data.n_q_points;
-  const unsigned int n_dofs     = scratch_data.n_dofs;
+// Loop and quadrature informations
+const auto &       JxW        = scratch_data.JxW;
+const unsigned int n_q_points = scratch_data.n_q_points;
+const unsigned int n_dofs     = scratch_data.n_dofs;
 
-  // Copy data elements
-  auto &strong_residual = copy_data.strong_residual;
-  auto &local_rhs       = copy_data.local_rhs;
+// Copy data elements
+auto &strong_residual = copy_data.strong_residual;
+auto &local_rhs       = copy_data.local_rhs;
 
-  // Time stepping information
-  const auto          method = this->simulation_control->get_assembly_method();
-  std::vector<double> time_steps_vector =
-    this->simulation_control->get_time_steps_vector();
-
-
-
-  // Vector for the BDF coefficients
-  // Vector<double>      bdf_coefs = bdf_coefficients(method,
-  // time_steps_vector); std::vector<double> phase_value(1 +
-  // number_of_previous_solutions(method));
-
-  // Loop over the quadrature points
-  for (unsigned int q = 0; q < n_q_points; ++q)
-    {
-      // Phase values, their gradient, hessian, and laplacian
-      const double &        phase_value = scratch_data.phase_values[q];
-      const Tensor<1, dim> &phase_gradient =
-        scratch_data.phase_gradient_values[q];
-      const double          phase_gradient_norm = phase_gradient.norm();
-      const Tensor<2, dim> &phase_hessian   = scratch_data.phase_hessians[q];
-      const double &        phase_laplacian = scratch_data.phase_laplacians[q];
-
-      // phase_value[0] = scratch_data.phase_values[q];
+// Time stepping information
+const auto          method = this->simulation_control->get_assembly_method();
+std::vector<double> time_steps_vector =
+  this->simulation_control->get_time_steps_vector();
 
 
-      density =
-        calculate_point_property(phase_value,
-                                 this->physical_properties.fluids[0].density,
-                                 this->physical_properties.fluids[1].density);
+
+// Vector for the BDF coefficients
+// Vector<double>      bdf_coefs = bdf_coefficients(method,
+// time_steps_vector); std::vector<double> phase_value(1 +
+// number_of_previous_solutions(method));
+
+// Loop over the quadrature points
+for (unsigned int q = 0; q < n_q_points; ++q)
+  {
+    // Phase values, their gradient, hessian, and laplacian
+    const double &        phase_value = scratch_data.phase_values[q];
+    const Tensor<1, dim> &phase_gradient =
+      scratch_data.phase_gradient_values[q];
+    const double          phase_gradient_norm = phase_gradient.norm();
+    const Tensor<2, dim> &phase_hessian   = scratch_data.phase_hessians[q];
+    const double &        phase_laplacian = scratch_data.phase_laplacians[q];
+
+    // phase_value[0] = scratch_data.phase_values[q];
 
 
-      for (unsigned int i = 0; i < n_dofs; ++i)
-        {
-          const auto grad_phi_u_i = scratch_data.grad_phi_u[q][i];
-          const auto phi_u_i      = scratch_data.phi_u[q][i];
-          double     local_rhs_i  = 0;
+    density =
+      calculate_point_property(phase_value,
+                               this->physical_properties.fluids[0].density,
+                               this->physical_properties.fluids[1].density);
 
-          double       delta_s = 0.0;
-          const double epsilon = 1;
-          double       fi      = 2 * phase_value - 1;
 
-          if (fi < epsilon && fi > -1.0 * epsilon)
-            {
-              delta_s = 1.0 / (2.0 * epsilon) * cos(M_PI * fi / epsilon);
-            }
+    for (unsigned int i = 0; i < n_dofs; ++i)
+      {
+        const auto grad_phi_u_i = scratch_data.grad_phi_u[q][i];
+        const auto phi_u_i      = scratch_data.phi_u[q][i];
+        double     local_rhs_i  = 0;
 
-          // double k = ((phase_gradient * phase_hessian * phase_gradient) -
-          //              (phase_gradient_norm * phase_gradient_norm *
-          //              phase_laplacian)) /
-          //         (phase_gradient_norm * phase_gradient_norm *
-          //         phase_gradient_norm + DBL_MIN);
+        double       delta_s = 0.0;
+        const double epsilon = 1;
+        double       fi      = 2 * phase_value - 1;
 
-          // local_rhs_i += surface_tension_coef * density * denominator_inverse
-          // * phase_gradient / (phase_gradient_norm + DBL_MIN) * (grad_phi_u_i
-          // * phase_gradient + phi_u_i * phase_laplacian);
-          local_rhs_i +=
-            surface_tension_coef * density * denominator_inverse *
-            phase_gradient / (phase_gradient_norm + DBL_MIN) *
-            (grad_phi_u_i * phase_gradient + phi_u_i * phase_laplacian);
+        if (fi < epsilon && fi > -1.0 * epsilon)
+          {
+            delta_s = 1.0 / (2.0 * epsilon) * cos(M_PI * fi / epsilon);
+          }
 
-          local_rhs(i) += local_rhs_i * JxW[q];
-        }
-    }
+        // double k = ((phase_gradient * phase_hessian * phase_gradient) -
+        //              (phase_gradient_norm * phase_gradient_norm *
+        //              phase_laplacian)) /
+        //         (phase_gradient_norm * phase_gradient_norm *
+        //         phase_gradient_norm + DBL_MIN);
+
+        // local_rhs_i += surface_tension_coef * density * denominator_inverse
+        // * phase_gradient / (phase_gradient_norm + DBL_MIN) * (grad_phi_u_i
+        // * phase_gradient + phi_u_i * phase_laplacian);
+        local_rhs_i +=
+          surface_tension_coef * density * denominator_inverse *
+          phase_gradient / (phase_gradient_norm + DBL_MIN) *
+          (grad_phi_u_i * phase_gradient + phi_u_i * phase_laplacian);
+
+        local_rhs(i) += local_rhs_i * JxW[q];
+      }
+  }
+  */
 }
 
 template class GLSNavierStokesVOFAssemblerCSF<2>;

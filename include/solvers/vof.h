@@ -72,13 +72,8 @@ public:
     if (simulation_parameters.mesh.simplex)
       {
         // for simplex meshes
-        fe = std::make_shared<FE_SimplexP<dim>>(1);
-        // ****** ?
-        const FE_SimplexP<dim> fe_pfg(1);
-        fe_curvature      = std::make_shared<FE_SimplexP<dim>>(1);
-        fs_mapping        = std::make_shared<MappingFE<dim>>(*fe);
-        pfg_mapping       = std::make_shared<MappingFE<dim>>(fe_pfg);
-        curvature_mapping = std::make_shared<MappingFE<dim>>(*fe_curvature);
+        fe              = std::make_shared<FE_SimplexP<dim>>(1);
+        fs_mapping      = std::make_shared<MappingFE<dim>>(*fe);
         cell_quadrature = std::make_shared<QGaussSimplex<dim>>(fe->degree + 1);
         face_quadrature =
           std::make_shared<QGaussSimplex<dim - 1>>(fe->degree + 1);
@@ -451,15 +446,18 @@ private:
   find_filtered_pfg();
 
   /**
-   * @brief Carries out finding the gradients of phase fraction. Obtained gradients of phase
-   * fraction is used in find_filtered_interface_curvature to find interface
-   * curvature (k).
+   * @brief Carries out finding the interface curvature.
    */
   void
   find_filtered_interface_curvature();
 
   /**
-   * @brief Assembles the matrix and rhs for calculation of filtered phase gradient.
+   * @brief Assembles the matrix and rhs for calculation of filtered phase gradient (fpg).
+   *
+   * Solves:
+   * $$ v . \psi + \eta * \nabla v . \nabla \psi = v . \nabla \phi $$
+   * where $$v$$, $$\psi$$, $$\eta$$, and $$\phi$$ are test function, fpg,
+   * filter value, and phase fraction.
    *
    * @param solution VOF solution (phase fraction)
    */
@@ -467,20 +465,27 @@ private:
   assemble_pfg_matrix_and_rhs(TrilinosWrappers::MPI::Vector &solution);
 
   /**
-   * @brief Solves phase gradient system.
+   * @brief Solves phase fraction gradient system.
    */
   void
   solve_pfg();
 
   /**
-   * @brief Assembles the matrix and rhs for calculation of the interface curvature.
+   * @brief Assembles the matrix and rhs for calculation of the curvature.
+   *
+   * Solves:
+   * $$ v * k + \eta * \nabla v . \nabla k = \nabla v . (\psi / |\psi|) $$
+   * where $$v$$, $$psi$$, $$eta$$, and $$k$$ are test function, fpg, filter
+   * value, and curvature.
+   *
+   * @param present_pfg_solution
    */
   void
   assemble_curvature_matrix_and_rhs(
     TrilinosWrappers::MPI::Vector &present_pfg_solution);
 
   /**
-   * @brief Solves interface curvature system.
+   * @brief Solves curvature system.
    */
   void
   solve_curvature();
@@ -502,11 +507,10 @@ private:
   ConvergenceTable                    error_table;
 
   // Mapping and Quadrature
-  std::shared_ptr<Mapping<dim>>    fs_mapping;
-  std::shared_ptr<Mapping<dim>>    pfg_mapping;
-  std::shared_ptr<Mapping<dim>>    curvature_mapping;
-  std::shared_ptr<Quadrature<dim>> cell_quadrature;
-  // std::shared_ptr<Quadrature<dim>>     cell_quadrature_pfg;
+  std::shared_ptr<Mapping<dim>>        fs_mapping;
+  std::shared_ptr<Mapping<dim>>        pfg_mapping;
+  std::shared_ptr<Mapping<dim>>        curvature_mapping;
+  std::shared_ptr<Quadrature<dim>>     cell_quadrature;
   std::shared_ptr<Quadrature<dim - 1>> face_quadrature;
   std::shared_ptr<Quadrature<dim>>     error_quadrature;
 
@@ -543,13 +547,10 @@ private:
   TrilinosWrappers::MPI::Vector nodal_pfg_relevant;
   TrilinosWrappers::MPI::Vector nodal_pfg_owned;
 
-  // ****** if needed?
-  std::vector<TrilinosWrappers::MPI::Vector> pfg_solution_stages;
-  TrilinosWrappers::SparseMatrix             system_matrix_pfg;
-  TrilinosWrappers::SparseMatrix             complete_system_matrix_pfg;
-  TrilinosWrappers::MPI::Vector              system_rhs_pfg;
-  TrilinosWrappers::MPI::Vector              complete_system_rhs_pfg;
-
+  TrilinosWrappers::SparseMatrix system_matrix_pfg;
+  TrilinosWrappers::SparseMatrix complete_system_matrix_pfg;
+  TrilinosWrappers::MPI::Vector  system_rhs_pfg;
+  TrilinosWrappers::MPI::Vector  complete_system_rhs_pfg;
 
   // Filtered curvature solution
   TrilinosWrappers::MPI::Vector present_curvature_solution;
@@ -559,18 +560,15 @@ private:
   TrilinosWrappers::MPI::Vector nodal_curvature_relevant;
   TrilinosWrappers::MPI::Vector nodal_curvature_owned;
 
-  // ***** if needed?
-  std::vector<TrilinosWrappers::MPI::Vector> previous_curvature_solutions;
-  std::vector<TrilinosWrappers::MPI::Vector> curvature_solution_stages;
+  std::vector<Tensor<1, dim>> pfg_values;
+  std::vector<double>         curvature_values;
 
   TrilinosWrappers::SparseMatrix system_matrix_curvature;
   TrilinosWrappers::SparseMatrix complete_system_matrix_curvature;
   TrilinosWrappers::MPI::Vector  system_rhs_curvature;
   TrilinosWrappers::MPI::Vector  complete_system_rhs_curvature;
 
-
   std::shared_ptr<TrilinosWrappers::PreconditionILU> ilu_preconditioner;
-
 
   // Lower and upper bounds of phase fraction
   const double vof_upper_bound = 1.0;
