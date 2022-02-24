@@ -119,6 +119,9 @@ GLSNavierStokesAssemblerCore<dim>::assemble_matrix(
               const auto &phi_u_j      = scratch_data.phi_u[q][j];
               const auto &grad_phi_u_j = scratch_data.grad_phi_u[q][j];
               const auto &div_phi_u_j  = scratch_data.div_phi_u[q][j];
+              const auto &laplacian_phi_u_i =
+                scratch_data.laplacian_phi_u[q][i];
+
 
               const auto &phi_p_j = scratch_data.phi_p[q][j];
 
@@ -143,7 +146,8 @@ GLSNavierStokesAssemblerCore<dim>::assemble_matrix(
               if (SUPG)
                 {
                   local_matrix_ij +=
-                    tau * (strong_jac * grad_phi_u_i_x_velocity +
+                    tau * (strong_jac * (grad_phi_u_i_x_velocity +
+                                         viscosity * laplacian_phi_u_i) +
                            strong_residual_x_grad_phi_u_i * phi_u_j);
                 }
               local_matrix_ij *= JxW;
@@ -192,6 +196,8 @@ GLSNavierStokesAssemblerCore<dim>::assemble_rhs(
       const Tensor<1, dim> velocity_laplacian =
         scratch_data.velocity_laplacians[q];
 
+
+
       // Pressure
       const double         pressure = scratch_data.pressure_values[q];
       const Tensor<1, dim> pressure_gradient =
@@ -228,11 +234,13 @@ GLSNavierStokesAssemblerCore<dim>::assemble_rhs(
       // Assembly of the right-hand side
       for (unsigned int i = 0; i < n_dofs; ++i)
         {
-          const auto phi_u_i      = scratch_data.phi_u[q][i];
-          const auto grad_phi_u_i = scratch_data.grad_phi_u[q][i];
-          const auto phi_p_i      = scratch_data.phi_p[q][i];
-          const auto grad_phi_p_i = scratch_data.grad_phi_p[q][i];
-          const auto div_phi_u_i  = scratch_data.div_phi_u[q][i];
+          const auto &phi_u_i           = scratch_data.phi_u[q][i];
+          const auto &grad_phi_u_i      = scratch_data.grad_phi_u[q][i];
+          const auto &phi_p_i           = scratch_data.phi_p[q][i];
+          const auto &grad_phi_p_i      = scratch_data.grad_phi_p[q][i];
+          const auto &div_phi_u_i       = scratch_data.div_phi_u[q][i];
+          const auto &laplacian_phi_u_i = scratch_data.laplacian_phi_u[q][i];
+
 
           double local_rhs_i = 0;
 
@@ -254,7 +262,10 @@ GLSNavierStokesAssemblerCore<dim>::assemble_rhs(
           if (SUPG)
             {
               local_rhs_i +=
-                -tau * (strong_residual * (grad_phi_u_i * velocity)) * JxW;
+                -tau *
+                (strong_residual *
+                 (grad_phi_u_i * velocity + viscosity * laplacian_phi_u_i)) *
+                JxW;
             }
           local_rhs(i) += local_rhs_i;
         }
