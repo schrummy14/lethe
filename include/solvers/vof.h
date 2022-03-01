@@ -482,7 +482,7 @@ private:
    */
   void
   assemble_curvature_matrix_and_rhs(
-    TrilinosWrappers::MPI::Vector &present_solution);
+    TrilinosWrappers::MPI::Vector &present_pfg_solution);
 
   /**
    * @brief Solves curvature system.
